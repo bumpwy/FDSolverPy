@@ -61,9 +61,9 @@ class diff_solver(parallel_solver_3d):
 
         # store the class object as dict
         if self.rank == 0:
-            pickle.dump({'diff_solver':self.dict},
-                         open(os.path.join(outdir,'diff_solver.pckl'),'wb'),
-                         protocol=-1)
+            pickle.dump(self.dict,
+                        open(os.path.join(outdir,'diff_solver.pckl'),'wb'),
+                        protocol=-1)
         
         ########## Optimization Setup ##########
         #self.str_to_alg(alg)
@@ -266,7 +266,7 @@ class diff_solver(parallel_solver_3d):
 ##### helper functions #####
 def read_diffsolver_data(path):
     # read in dictionary object
-    dct = pickle.load(open(os.path.join(path,'diff_solver.pckl'),'rb'))['diff_solver']
+    dct = pickle.load(open(os.path.join(path,'diff_solver.pckl'),'rb'))
     Ns = [len(X) for X in dct['Xs']]
     
     # optimized concentration field
