@@ -19,9 +19,9 @@ class diff_solver(parallel_solver_3d):
                  # pbc
                  pbc=(0,0,0),
                  # diffusivity
-                 D=None,
+                 D='D.npz',
                  # variable initialization
-                 C=None,Data_Type=['double'],
+                 C='C.npz',Data_Type=['double'],
                  # extra (mostly for backward compatability)
                  **kwargs):
         # call parent constructor
@@ -30,9 +30,12 @@ class diff_solver(parallel_solver_3d):
         self.d = np.zeros(tuple(self.nes+[self.ndim,self.ndim]),dtype=Data_Type[0])
         self.c = np.zeros(tuple(self.nes),dtype=Data_Type[0])
         self.set_variables(varnames=['c'],dat=[self.c],dat_bc=[None],dat_type=[MPI.DOUBLE])
+        
         # distribute large grid to decomposed grid (for each cpu)
-        self.distribute(self.d,D)
-        self.distribute(self.c,C)
+        if type(D) is str: self.distribute(self.d,np.load(D)['D'])
+        else: self.distribute(self.d,D)
+        if type(C) is str: self.distribute(self.c,np.load(C)['C'])
+        else: self.distribute(self.c,C)
 
         # for speed
         ops = self.d,tuple(self.nes+[self.ndim])
