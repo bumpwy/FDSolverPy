@@ -28,16 +28,27 @@ class diff_solver(parallel_solver):
                  **kwargs):
         # call parent constructor
         parallel_solver.__init__(self,Xs,ghost,pbc=pbc)
+        
+        # load variables
+        if type(D) is str: 
+            D_array = np.load(D)['D']
+        else:
+            D_array = D
+        if type(C) is str: 
+            C_array = np.load(C)['C']
+        else:
+            C_array = C
+        
         # setup variables
-        self.d = np.zeros(tuple(self.nes+[self.ndim,self.ndim]),dtype=Data_Type[0])
-        self.c = np.zeros(tuple(self.nes),dtype=Data_Type[0])
-        self.set_variables(varnames=['c'],dat=[self.c],dat_bc=[None],dat_type=[MPI.DOUBLE])
+        self.d = np.zeros(tuple(self.nes+[self.ndim,self.ndim]),dtype=D_array.dtype)
+        self.c = np.zeros(tuple(self.nes),dtype=C_array.dtype)
+        c_mpi_type = MPI._typedict[self.c.dtype.char]
+        self.set_variables(varnames=['c'],dat=[self.c],\
+                           dat_bc=[None],dat_type=[c_mpi_type])
         
         # distribute large grid to decomposed grid (for each cpu)
-        if type(D) is str: self.distribute(self.d,np.load(D)['D'])
-        else: self.distribute(self.d,D)
-        if type(C) is str: self.distribute(self.c,np.load(C)['C'])
-        else: self.distribute(self.c,C)
+        self.distribute(self.d,D_array)
+        self.distribute(self.c,C_array)
 
         # for speed
         ops = self.d,tuple(self.nes+[self.ndim])
@@ -64,7 +75,7 @@ class diff_solver(parallel_solver):
         # store the class object as dict
         if self.rank == 0:
             pickle.dump(self.dict,
-                        open(os.path.join(outdir,'diff_solver.pckl'),'wb'),
+                        open('diff_solver.pckl','wb'),
                         protocol=-1)
         
         ########## Optimization Setup ##########
@@ -137,7 +148,7 @@ class diff_solver(parallel_solver):
         if alpha2==0: return 0
         return max(alpha1/alpha2, 0)
 
-    def golden_line_search(self,dF_d,d,mu=1e-4,tol_l=1e-1):
+    def golden_line_search(self,dF_d,d,mu=1e-6,tol_l=1e0):
         ###### The Golden Line Search #####
         # point 0 ...................
         alpha0 = 0
@@ -149,10 +160,10 @@ class diff_solver(parallel_solver):
             alpha1 /= 2
             Fe1 = self.F(d-alpha1*dF_d)
         # point 2 ...................
-        alpha2 = 3*alpha1
+        alpha2 = alpha1*10
         Fe2 = self.F(d-alpha2*dF_d)
         while Fe2<Fe1:
-            alpha2*=2
+            alpha2*=5
             Fe2 = self.F(d-alpha2*dF_d)
         # now we do the line search......
         h = alpha2-alpha0
@@ -233,8 +244,7 @@ class diff_solver(parallel_solver):
         ##### NumPy #####
         J = self.J_oe_expr(gradCs)
         e_density = 0.5*self.e_oe_expr(J,gradCs)
-        
-        
+         
         return self.par_sum((e_density[self.ind]))
 
     def dF(self,c,dF_dc,mask=None):

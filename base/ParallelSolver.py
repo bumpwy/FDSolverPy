@@ -8,6 +8,7 @@ import numpy as np
 from mpi4py import MPI
 from math import fsum
 import accupy as ap
+import mpmath as mp
 
 class parallel_solver():
     def __init__(self,Xs,ghost=1,pbc=(0,0,0),partition=None):
@@ -115,8 +116,9 @@ class parallel_solver():
         #return fsum(A)
 
         #### method 3: fast, and somewhat accurate ####
-        A=np.ravel(self.comm.allgather(ap.ksum(a.ravel(),K=2)))
-        return ap.ksum(A)
+        #A=np.ravel(self.comm.allgather(ap.ksum(a.ravel(),K=2)))
+        A=np.ravel(self.comm.allgather(fsum(a.ravel())))
+        return fsum(A)
         
     def update_boundary(self,dat,*argv):
         dim = len(dat.shape)-self.ndim
