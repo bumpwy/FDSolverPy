@@ -5,12 +5,14 @@
 import numpy as np
 import opt_einsum as oe
 import os, subprocess, pickle, gc
-from ParallelSolver import *
+import sys
+sys.path.append('../')
+from base.ParallelSolver import *
 from datetime import datetime
 import itertools as it
 
 
-class diff_solver(parallel_solver_3d):
+class diff_solver(parallel_solver):
     def __init__(self,
                  # inputs for grid
                  Xs,ghost,
@@ -264,9 +266,14 @@ class diff_solver(parallel_solver_3d):
 
 
 ##### helper functions #####
+def read_diffsolver_args(fname='diff_solver.pckl'):
+    # read in dictionary object
+    dct = pickle.load(open(fname,'rb'))
+    return dct
+
 def read_diffsolver_data(path):
     # read in dictionary object
-    dct = pickle.load(open(os.path.join(path,'diff_solver.pckl'),'rb'))
+    dct = read_diffsolver_args(os.path.join(path,'diff_solver.pckl'))
     Ns = [len(X) for X in dct['Xs']]
     
     # optimized concentration field
