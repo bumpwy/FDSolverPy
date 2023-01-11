@@ -304,6 +304,16 @@ def read_diffsolver(path='./data'):
 
     return calc, C, gradCs, J
 
+# create the initial concentration field according to Q-vector
+# if Q is not provided, i.e. Q=None, a randomized unit vector will be used
+def create_C(xxs,Q=None):
+    if Q is None:
+        Q = np.random.rand(3)
+        Q /= np.linalg.norm(Q)
+    C = np.einsum('i,iabc->abc',-Q,np.array(xxs))
+    return C
+
+
 def calc_Dijs(dct):
     D = []
     for dat_triplet in it.combinations(dct.values(),3):
