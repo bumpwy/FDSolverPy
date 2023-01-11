@@ -7,7 +7,7 @@ import opt_einsum as oe
 import os, subprocess, pickle, gc
 import sys
 sys.path.append('../')
-from base.ParallelSolver import *
+from FDSolverPy.base.ParallelSolver import *
 from datetime import datetime
 import itertools as it
 
@@ -15,9 +15,7 @@ import itertools as it
 class diff_solver(parallel_solver):
     def __init__(self,
                  # inputs for grid
-                 Xs,ghost,
-                 # elasticity
-                 moduli_object=None,
+                 Xs,ghost=2,
                  # pbc
                  pbc=(0,0,0),
                  # diffusivity
@@ -59,11 +57,8 @@ class diff_solver(parallel_solver):
 
         # parameters
         self.C = C
-        # crystal related / moduli tensor
-        self.mod = moduli_object
         # store parameters
         self.dict = {'Xs':Xs,'ghost':ghost,'pbc':pbc,
-                     'moduli_object':moduli_object,
                      'D':D, 'C':C, 'Data_Type':Data_Type}
     def run(self,outdir='data',restart=False,
             Nstep=100,step=1,etol=1e-4,ftol=1e-4):
@@ -89,7 +84,7 @@ class diff_solver(parallel_solver):
         t1 = datetime.now()
         self.parprint('Big Loop Begins...')
         self.parprint("%s%s%s%s%s"\
-                       %('it(#)'.ljust(10),'F(eV)'.ljust(15),'dF(eV)'.ljust(15),\
+                       %('it(#)'.ljust(10),'F(eV)'.ljust(15),'dF(eV)'.ljust(25),\
                          'Force_max(eV/A)'.ljust(20),'Time(h:m:s)'.ljust(15)))
         it = 0 # iterator counter
         while (Err > ftol or DF > etol) and it < Nstep:
@@ -103,7 +98,8 @@ class diff_solver(parallel_solver):
                 self.parprint("%s%s%s%s%s"\
                                 %(('%i'%it).ljust(10),\
                                   ('%.4e'%Fe0).ljust(15),\
-                                  ('%.4e'%(Fe0-Fe_old)).ljust(15),\
+                                  (f'{(Fe0-Fe_old):.4e}/{(100*DF):.4f} %').ljust(25),\
+                                  #('%.4e  %.4f %'%(Fe0-Fe_old,DF)).ljust(25),\
                                   ('%.4e'%Err).ljust(20),\
                                   str(datetime.now()-t1).ljust(15)))
             # - integration
@@ -119,7 +115,8 @@ class diff_solver(parallel_solver):
         self.parprint("%s%s%s%s%s"\
                         %(('%i'%it).ljust(10),\
                           ('%.4e'%Fe0).ljust(15),\
-                          ('%.4e'%(Fe0-Fe_old)).ljust(15),\
+                          (f'{(Fe0-Fe_old):.4e}/{(100*DF):.4f} %').ljust(25),\
+                          #('%.4e'%(Fe0-Fe_old)).ljust(15),\
                           ('%.4e'%Err).ljust(20),\
                           str(datetime.now()-t1).ljust(15)))
         self.parprint('Big Loop time lapse: %s'%(str(datetime.now()-t1)))

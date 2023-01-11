@@ -7,7 +7,7 @@ import os,subprocess, glob
 import numpy as np
 from mpi4py import MPI
 from math import fsum
-import accupy as ap
+#import accupy as ap
 import mpmath as mp
 
 class parallel_solver():
