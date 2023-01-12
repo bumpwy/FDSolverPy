@@ -273,51 +273,73 @@ class diff_solver(parallel_solver):
 
 
 ##### helper functions #####
-def read_diffsolver_args(fname='diff_solver.pckl'):
+def read_diffsolver_args(path):
     # read in dictionary object
-    dct = pickle.load(open(fname,'rb'))
+    dct = pickle.load(open(os.path.join(path,'diff_solver.pckl'),'rb'))
     return dct
 
-def read_diffsolver_data(path):
+def read_diffsolver_data(path='.',prefix='data'):
     # read in dictionary object
-    dct = read_diffsolver_args(os.path.join(path,'diff_solver.pckl'))
+    dct = read_diffsolver_args(path)
     Ns = [len(X) for X in dct['Xs']]
+
+    data_path = os.path.join(path,prefix)
     
     # optimized concentration field
-    counter_mm = np.memmap(os.path.join(path,'counter.dat'),\
+    counter_mm = np.memmap(os.path.join(data_path,'counter.dat'),\
                            dtype='int32',mode='r+',shape=())
     count = counter_mm.tolist()
-    C = np.fromfile(os.path.join(path,f'c.{count-1}'),dtype=np.double).reshape(Ns,order='F')
+    C = np.fromfile(os.path.join(data_path,f'c.{count-1}'),dtype=np.double).reshape(Ns,order='F')
 
     return dct, C
     
-def read_diffsolver(path='./data'):
+def read_diffsolver(path='.',prefix='data'):
     # read in data
-    dct, C = read_diffsolver_data(path)
+    dct, C = read_diffsolver_data(path,prefix)
 
     # diffsolver object
     calc = diff_solver(**dct)
 
     # calculate current
-    gradCs = np.stack(np.gradient(C,*calc.dxs),axis=-1)
-    J = -np.einsum('abcij,abcj->abci',calc.d,gradCs)
+    Q = -np.stack(np.gradient(C,*calc.dxs),axis=-1)
+    J = np.einsum('abcij,abcj->abci',calc.d,Q)
 
-    return calc, C, gradCs, J
+    return calc, C, Q, J
+
+# write inputs
+def write_inputs(path,input_dct,C,D):
+    subprocess.call(f'mkdir -p {path}',shell=True)
+    pickle.dump(input_dct,\
+                open(os.path.join(path,'diff_solver.pckl'),'wb'),\
+                protocol=-1)
+    np.savez_compressed(os.path.join(path,'C.npz'),C=C)
+    np.savez_compressed(os.path.join(path,'D.npz'),D=D)
 
 # create the initial concentration field according to Q-vector
 # if Q is not provided, i.e. Q=None, a randomized unit vector will be used
 def create_C(xxs,Q=None):
     if Q is None:
-        Q = np.random.rand(3)
+        Q = np.random.rand(3)-0.5
         Q /= np.linalg.norm(Q)
     C = np.einsum('i,iabc->abc',-Q,np.array(xxs))
     return C
 
 
-def calc_Dijs(dct):
-    D = []
-    for dat_triplet in it.combinations(dct.values(),3):
-        Jms = np.array([dat['Jm'] for dat in dat_triplet])
-        gCms = np.array([dat['gCm'] for dat in dat_triplet])
-        D += [-np.einsum('im,mj',Jms.T,np.linalg.inv(gCms).T)]
+def calculate_D(paths,prefixes=['data']*3):
+    Qs,Js = [], []
+    cwd = os.getcwd()
+    for path,prefix in zip(paths,prefixes):
+        os.chdir(path)
+        calc,c,q,j = read_diffsolver('.',prefix)
+        J,Q = j.mean(axis=(0,1,2)), q.mean(axis=(0,1,2))
+        Js += [J]
+        Qs += [Q]
+        os.chdir(cwd)
+
+    Jn = np.stack(Js,axis=-1)
+    Qn = np.stack(Qs,axis=-1)
+
+    D = np.einsum('in,nj->ij',Jn,np.linalg.inv(Qn))
+    
     return D
+
