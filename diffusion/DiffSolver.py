@@ -437,10 +437,11 @@ def read_diffsolver_data(path='.',prefix='data',frame=-1):
     data_path = os.path.join(path,prefix)
     
     # optimized concentration field
-    if frame == -1:
+    if frame <0:
         counter_mm = np.memmap(os.path.join(data_path,'counter.dat'),\
                                dtype='int32',mode='r+',shape=(1,))
         [count] = counter_mm.tolist()
+        count += (frame + 1)
     else:
         count = frame
     print(f'Reading the {count}th frame...')
