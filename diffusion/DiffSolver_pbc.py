@@ -9,7 +9,6 @@ import os, subprocess, pickle, gc
 import sys
 sys.path.append('../')
 from FDSolverPy.base.ParallelSolver import *
-from FDSolverPy.math.space import *
 from datetime import datetime
 import itertools as it
 
@@ -19,9 +18,9 @@ class diff_solver(parallel_solver):
                  # inputs for grid
                  Xs,ghost=2,
                  # pbc
-                 pbc=(0,0,0),
+                 pbc=(1,1,1),
                  # diffusivity
-                 D='D.npz',
+                 D='D.npz',Q=np.array([1,0,0]),
                  # variable initialization
                  C='C.npz',Data_Type=['double'],
                  # extra (mostly for backward compatability)
@@ -40,6 +39,7 @@ class diff_solver(parallel_solver):
             C_array = C
         
         # setup variables
+        self.Q = Q
         self.d = np.zeros(tuple(self.nes+[self.ndim,self.ndim]),dtype=D_array.dtype)
         self.c = np.zeros(tuple(self.nes),dtype=C_array.dtype)
         c_mpi_type = MPI._typedict[self.c.dtype.char]
@@ -61,7 +61,7 @@ class diff_solver(parallel_solver):
         self.C = C
         # store parameters
         self.dict = {'Xs':Xs,'ghost':ghost,'pbc':pbc,
-                     'D':D, 'C':C, 'Data_Type':Data_Type}
+                     'D':D, 'Q':Q,'C':C, 'Data_Type':Data_Type}
     def run(self,outdir='data',restart=False,
             Nstep=100,step=1,etol=1e-4,ftol=1e-4,ls_args={}):
         
@@ -146,9 +146,8 @@ class diff_solver(parallel_solver):
     def cg_integrate(self,d,hh,g0,g1,ls_args={}):
        
         ###### The Line Search #####
-        #t = self.golden_line_search(hh,d,**ls_args)
-        ts, Fs = self.bracket(0,1e-5,d,hh)
-        t = self.brent_line_search(ts, Fs, d, hh, **ls_args)
+        t = self.golden_line_search(hh,d,**ls_args)
+        #t = self.wolfe_line_search(hh,d,**ls_args)
         d -= t*hh
         
         ###### Construct New Conjugate Direction ######
@@ -167,109 +166,6 @@ class diff_solver(parallel_solver):
         if alpha2==0: return 0
         return max(alpha1/alpha2, 0)
 
-    def bracket(self,ta,tb,x,d):
-        gold,glim = (1+np.sqrt(5))/2, 100
-        Fa,Fb = self.F(x-ta*d), self.F(x-tb*d)
-        if Fb > Fa:
-            ta, tb = tb, ta
-            Fa, Fb = Fb, Fa
-        tc = tb + gold*(tb-ta)
-        Fc = self.F(x-tc*d)
-
-        # iteratively determine tc
-        while Fb > Fc:
-            r, q = (tb-ta)*(Fb-Fc), (tb-tc)*(Fb-Fa)
-            tu = tb-((tb-tc)*q - (tb-ta)*r)\
-                     /(2*np.sign(q-r) * np.absolute(max(np.absolute(q-r),1e-20)))
-            tulim = tb + glim*(tc-tb)
-            if ((tb-tu)*(tu-tc)) > 0:
-                Fu = self.F(x-tu*d)
-                if Fu < Fc:
-                    ta, tb = tb, tu
-                    Fa, Fb = Fb, Fa
-                    return (ta,tb,tc), (Fa,Fb,Fc)
-                elif Fu > Fb:
-                    tc, Fc = tu, Fu
-                    return (ta,tb,tc), (Fa,Fb,Fc)
-                tu = tc + gold*(tc-tb)
-                Fu = self.F(x-tu*d)
-            elif ((tc-tu)*(tu-tulim)) > 0:
-                Fu = self.F(x-tu*d)
-                if (Fu < Fc):
-                    tb, tc, tu = tc, tu, tu+gold*(tu-tc)
-                    Fb, Fc, Fu = Fc, Fu, self.F(x-tu*d)
-            elif ((tu-tulim)*(tulim-tc))>=0:
-                tu = tulim
-                Fu = self.F(x-tu*d)
-            else:
-                tu = tc + gold*(tc-tb)
-                Fu = self.F(x-tu*d)
-            ta, tb, tc = tb, tc, tu
-            Fa, Fb, Fc = Fb, Fc, Fu
-        return (ta, tb, tc), (Fa, Fb, Fc)
-    
-    def brent_line_search(self,ts,Fs,x,d,tol=1e-4,maxiter=100):
-        
-        # consts
-        gold, eps = 1/(np.sqrt(5)+1), 1e-40
-        
-        # initialize points
-        a, b, c = ts
-        Fa, Fb, Fc = Fs
-        o, w, v = b, b, b
-        Fw = Fv = Fo = self.F(x-o*d)
-        e, g = 0, 0
-
-        for i in range(maxiter):
-            m = (a + b)*0.5
-            tol1 = tol*np.absolute(o)+eps
-            tol2 = 2*tol1
-            if np.absolute(o-m) <= (tol2-0.5*(b-a)):
-                Fmin = Fo
-                return o
-            if (np.absolute(e) > tol1):
-                r, q = (o-w)*(Fo-Fv),(o-v)*(Fo-Fw)
-                p = (o-v)*q - (o-w)*r
-                q = 2*(q-r)
-                if q>0:
-                    p = -p
-                q = np.absolute(q)
-                etemp = e
-                e = g
-                if (np.absolute(p) >= np.absolute(0.5*q*etemp)) or \
-                        (p <= q*(a-o)) or (p >= q*(b-o)):
-                    e = (a-o if (o>=m) else b-o)
-                    g = gold*e
-                else:
-                    g = p/q
-                    u = o+g
-                    if (u-a < tol2) or ((b-u)<tol2):
-                        g = np.sign(m-o)*np.absolute(tol1)
-            else:
-                e = (a-o if o>=m else b-o)
-                g = gold*e
-            u = (o+g if (np.absolute(g) >= tol1) else o+np.sign(g)*np.absolute(tol1))
-            Fu = self.F(x-u*d)
-            if Fu <= Fo:
-                if u>=o: a=o
-                else: b=o
-                v,w,o = w,o,u
-                Fv,Fw,Fo = Fw,Fo,Fu
-            else:
-                if (u<o): a=u
-                else: b=u
-                if (Fu<=Fw) or (w==o):
-                    v = w
-                    w = u
-                    Fv = Fw
-                    Fw = Fu
-                elif (Fu <= Fv) or v==o or v==w:
-                    v, Fv = u, Fu
-        return o
-
-
-
-
     def golden_line_search(self,dF_d,d,mu=1e-6,tol_l=1e-2):
         ###### The Golden Line Search #####
         # point 0 ...................
@@ -284,7 +180,7 @@ class diff_solver(parallel_solver):
             alpha1 /= 2
             Fe1 = self.F(d-alpha1*dF_d)
         # point 2 ...................
-        alpha2 = alpha1*10
+        alpha2 = alpha1*5
         Fe2 = self.F(d-alpha2*dF_d)
         #self.parprint('point 2...')
         while Fe2<Fe1:
@@ -381,12 +277,12 @@ class diff_solver(parallel_solver):
     def F(self,c):
         # calculate energy
         self.update_boundary(c)
-        #gradCs = np.stack(np.gradient(c,*self.dxs),axis=-1)
-        gradCs = np.stack([self.FirstDiff(c,i) for i in range(self.ndim)],axis=-1)
+        gradCs = np.stack(np.gradient(c,*self.dxs),axis=-1)
+        #gradCs = np.stack([self.FirstDiff(c,i) for i in range(self.ndim)],axis=-1)
 
         ##### NumPy #####
-        J = self.J_oe_expr(gradCs)
-        e_density = 0.5*self.e_oe_expr(J,gradCs)
+        J = self.J_oe_expr(gradCs-self.Q)
+        e_density = 0.5*self.e_oe_expr(J,gradCs-self.Q)
          
         return self.par_sum((e_density[self.ind]))
 
@@ -397,7 +293,7 @@ class diff_solver(parallel_solver):
         #gradCs = np.stack([self.FirstDiff(c,i) for i in range(self.ndim)],axis=-1)
        
         ##### NumPy approach #####
-        J = self.J_oe_expr(gradCs)
+        J = self.J_oe_expr(gradCs-self.Q)
         #e_density = 0.5*self.e_oe_expr(J,gradCs)
        
         # calculate force
@@ -405,7 +301,7 @@ class diff_solver(parallel_solver):
         dF_dc[:] = sum([-np.gradient(J[...,i],dx,axis=i) for i,dx in enumerate(self.dxs)])
 
         # here we apply a fix boundary condition
-        self.fix_boundary(dF_dc)
+        #self.fix_boundary(dF_dc)
         self.update_boundary(dF_dc)
         
         # maximal force
@@ -475,31 +371,12 @@ def write_inputs(path,input_dct,C,D):
 
 # create the initial concentration field according to Q-vector
 # if Q is not provided, i.e. Q=None, a randomized unit vector will be used
-
-def micro_delC(d,grid,Q):
-    grad_inv_d = grad_fft(1/d,grid)
-    f = np.einsum('abc,abci->abci',d,grad_inv_d)
-    fQ = np.einsum('abci,i->abc',f,Q)
-
-    # first order term
-    del_c = -inv_lapl_fft(fQ,grid)
-
-    # invert Poisson
-    return del_c
-def macro_C0(grid,Q=None):
-    # create Q-vector if needed
+def create_C(xxs,Q=None):
     if Q is None:
         Q = np.random.rand(3)-0.5
         Q /= np.linalg.norm(Q)
-
-    # macroscopic C
-    C0 = np.einsum('i,iabc->abc',-Q,np.array(grid.xxs))
-
-    return C0
-
-def create_C(grid,d,Q=None):
-
-    return macro_C0(grid,Q) + micro_delC(d,grid,Q)*0.4
+    C = np.einsum('i,iabc->abc',-Q,np.array(xxs))
+    return C
 
 
 # calculates effective diffusivity from given calculation results

@@ -14,6 +14,10 @@ def draw_cuboid(XXs,scalar,fig=None,ax=None,plotter='mayavi',cmap=None,**kwargs)
         cmap_func.set_bad(color='black')
         smin,smax = scalar.min(), scalar.max()
     plots = []
+
+    # plotting each facet
+    # for simplicity lets offset the grid
+    XXs = [XX - XX.min() for XX in XXs]
     for i in range(3):
         N = Ns[i]
         L = XXs[i].max()
@@ -28,7 +32,7 @@ def draw_cuboid(XXs,scalar,fig=None,ax=None,plotter='mayavi',cmap=None,**kwargs)
     if plotter=='mayavi': return plots
     elif plotter=='matplotlib': return ax, plots
     
-def plot_Dij(Ds,ax,args):
+def plot_Dij(Ds,ax,args={}):
     i_flat = range(9)
     for D in Ds:
         ax.plot(i_flat,D.ravel(),'o',**args)

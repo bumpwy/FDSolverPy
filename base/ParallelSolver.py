@@ -15,6 +15,7 @@ class parallel_solver():
 
         ########## global grid ##########
         # Grid size
+        self.pbc = pbc
         self.Ns = [len(x) for x in Xs]
         self.Xs = Xs
         self.dxs = [x[1]-x[0] for x in Xs]
@@ -48,9 +49,16 @@ class parallel_solver():
             start,end = 1,1
             if (not pbc[i]) and (self.neighbors[i][0]<0): start = 0
             if (not pbc[i]) and (self.neighbors[i][1]<0): end = 0
+
             # create local grid
             self.nes += [self.ns[i]+(start+end)*ghost]
-            self.xs += [Xs[i][self.disps[i]-start*ghost:self.disps[i]+self.nes[i]]]
+            start_ind, end_ind = self.disps[i]-start*ghost,\
+                                 self.disps[i]-start*ghost+self.nes[i]
+            if end_ind >= self.Ns[i]:
+                ii = np.r_[start_ind:self.Ns[i],0:(end_ind-self.Ns[i])]
+            else:
+                ii = np.r_[start_ind:end_ind]
+            self.xs += [Xs[i][ii]]
             ind += [np.s_[start*ghost:self.nes[i]-end*ghost]]
 
         self.ind = tuple(ind) 
@@ -112,13 +120,12 @@ class parallel_solver():
         #return fsum(self.Buffer)
 
         #### method 2: somewhat faster, quite accurate ####
-        #A=np.ravel(self.comm.allgather(fsum(a.ravel())))
-        #return fsum(A)
+        A=np.ravel(self.comm.allgather(fsum(a.ravel())))
+        return fsum(A)
 
         #### method 3: fast, and somewhat accurate ####
         #A=np.ravel(self.comm.allgather(ap.ksum(a.ravel(),K=2)))
-        A=np.ravel(self.comm.allgather(fsum(a.ravel())))
-        return fsum(A)
+        #return fsum(A)
         
     def update_boundary(self,dat,*argv):
         dim = len(dat.shape)-self.ndim
@@ -274,11 +281,8 @@ class parallel_solver():
         
         ########## MPI-IO Stuff ##########
         # open outdir
-        if self.rank==0:
-            data_paths = os.path.join(outdir,'*')
-            if glob.glob(data_paths) != []:
-                subprocess.call(f'rm {data_paths}',shell=True)
-            subprocess.call(f'mkdir -p {outdir}',shell=True)
+        subprocess.call(f'mkdir -p {outdir}',shell=True)
+        
         # derived array data type for MPI-IO. defines pointer to the sub-block of array for each processor
         self.dat_mpi_arraytype = \
             [d_type.Create_subarray(self.Ns,self.ns,self.disps,order=MPI.ORDER_F) for d_type in self.dat_type]
@@ -288,14 +292,14 @@ class parallel_solver():
         if restart:
             if self.rank==0:
                 self.counter_mm = np.memmap(os.path.join(outdir,'counter.dat'),\
-                                            dtype='int32',mode='r+',shape=())
-                counter = self.counter_mm.tolist()
+                                            dtype='int32',mode='r+',shape=(1,))
+                [counter] = self.counter_mm.tolist()
             else: counter = None
             counter = self.comm.bcast(counter,root=0)
             # Read the last frame from the Previous Run
             amode = MPI.MODE_RDONLY
             for i in range(self.n_var):
-                full_fname = os.path.join(path,f'{self.varnames[i]}.{counter}')
+                full_fname = os.path.join(outdir,f'{self.varnames[i]}.{counter}')
                 mpifh = MPI.File.Open(self.comm, full_fname, amode)
                 mpifh.Set_view(0,etype=self.dat_type[i],filetype=self.dat_mpi_arraytype[i])
                 mpifh.Read(self.dat_r[i])
@@ -303,20 +307,36 @@ class parallel_solver():
                 mpifh.Close()
         else:
             if self.rank==0:
+                # clean up old files
+                data_paths = os.path.join(outdir,'*')
+                if glob.glob(data_paths) != []:
+                    subprocess.call(f'rm {data_paths}',shell=True)
+
+                # setup counter
                 self.counter_mm = np.memmap(os.path.join(outdir,'counter.dat'),\
-                                            dtype='int32',mode='w+',shape=())
+                                            dtype='int32',mode='w+',shape=(1,))
+                self.counter_mm[:] = -1
+                self.counter_mm.flush()
         # update boundary
-        for dd in self.dat:self.update_boundary(dd)
+        for dd in self.dat:
+            self.update_boundary(dd)
     
     # dump data to file
-    def dump(self,outdir):
+    def dump(self,outdir,counter=None):
         
-        # sync counter 
-        if self.rank==0: 
-            counter=self.counter_mm.tolist()
-        else: counter=None
-        counter = self.comm.bcast(counter,root=0)
-       
+        # sync counter if it's None and increase by 1
+        if counter is None:
+            if self.rank==0: 
+                [counter]=self.counter_mm.tolist()
+            counter = self.comm.bcast(counter,root=0)
+            counter += 1
+
+        # set new counter value
+        if self.rank==0:
+            self.counter_mm[:] = counter
+            self.counter_mm.flush()
+
+        # prepare to dump file(s)
         amode = MPI.MODE_WRONLY|MPI.MODE_CREATE|MPI.MODE_EXCL
         
         for i in range(self.n_var):
@@ -332,10 +352,6 @@ class parallel_solver():
             fh.Write_all(self.dat_r[i])
             fh.Close()
             
-        # counter increment
-        if self.rank==0: 
-            self.counter_mm += 1 
-            self.counter_mm.flush()
     # parallel printing
     def parprint(self,*argv):
         if self.rank==0: print(*argv)
