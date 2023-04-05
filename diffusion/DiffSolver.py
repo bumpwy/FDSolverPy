@@ -460,7 +460,7 @@ def read_diffsolver(path='.',prefix='data',frame=-1):
     os.chdir(cwd)
 
     # calculate current
-    q = -np.stack(np.gradient(calc.c,*calc.dxs),axis=-1)
+    q = -np.stack(np.gradient(c,*calc.dxs),axis=-1)
     j = np.einsum('abcij,abcj->abci',calc.d,q)
 
     return calc, c, q[calc.ind], j[calc.ind]
