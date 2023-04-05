@@ -1,14 +1,10 @@
 import os, subprocess
-from mpi4py import MPI
 
 def shell_to_strlist(command):
     err,output = subprocess.getstatusoutput(command)
     if err == 0: return output.strip().split('\n')
     else: return []
     
-def parprint(ss):
-    if MPI.COMM_WORLD.rank == 0: print(ss)
-
 def cpus_per_node(p='pdebug'):
     err, output = subprocess.getstatusoutput('sinfo --Node --long -p %s | grep %s' % (p, p))
     if err == 0:
