@@ -444,6 +444,9 @@ def read_diffsolver_data(path='.',prefix='data',frame=-1):
         count += (frame + 1)
     else:
         count = frame
+    # make sure frame exists
+    while not os.path.exists(os.path.join(data_path,f'c.{count}')):
+        count -= 1
     print(f'Reading the {count}th frame...')
     C = np.fromfile(os.path.join(data_path,f'c.{count}'),dtype=np.double).reshape(Ns,order='F')
 
