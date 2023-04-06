@@ -168,6 +168,10 @@ class diff_solver(parallel_solver):
     def bracket(self,ta,tb,x,d):
         gold,glim,eps = (1+np.sqrt(5))/2, 100, 1e-40
         Fa,Fb = self.F(x-ta*d), self.F(x-tb*d)
+        d_max = np.absolute(d).max()
+        while Fa==Fb and d_max != 0:
+            tb *= 10
+            Fb = self.F(x-tb*d)
         if Fb > Fa:
             ta, tb = tb, ta
             Fa, Fb = Fb, Fa
@@ -405,7 +409,7 @@ class diff_solver(parallel_solver):
        
         # calculate force
         #dF_dc[:] = sum([-self.SecondDiff(J[...,i],i) for i in range(self.ndim)])
-        dF_dc[:] = sum([-np.gradient(J[...,i],dx,axis=i) for i,dx in enumerate(self.dxs)])
+        dF_dc[:] = sum([-np.gradient(J[...,i],dx,axis=i) for i,dx in enumerate(self.dxs)])/np.prod(self.dxs)
 
         # here we apply a fix boundary condition
         self.fix_boundary(dF_dc)
