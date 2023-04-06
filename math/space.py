@@ -13,6 +13,10 @@ class Grid:
 
         self.center = [o + L/2 for o,L in zip(origin,Ls)]
 
+# differential operators in finite difference
+def grad(phi,grid):
+    return np.stack(np.gradient(phi,*grid.dxs),axis=-1)
+
 
 # differential operators for pbc systems
 def diff_fft(phi,grid,axis=0):

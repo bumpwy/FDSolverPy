@@ -3,15 +3,14 @@
 # phase-field equations. 
 #############################################################
 import numpy as np
-from scipy.optimize import line_search
 import opt_einsum as oe
-import os, subprocess, pickle, gc
-import sys
+import os, subprocess, pickle, gc, sys
 sys.path.append('../')
 from FDSolverPy.base.ParallelSolver import *
 from FDSolverPy.math.space import *
 from datetime import datetime
 import itertools as it
+
 
 
 class diff_solver(parallel_solver):
@@ -147,8 +146,7 @@ class diff_solver(parallel_solver):
        
         ###### The Line Search #####
         #t = self.golden_line_search(hh,d,**ls_args)
-        ts, Fs = self.bracket(0,1e-5,d,hh)
-        t = self.brent_line_search(ts, Fs, d, hh, **ls_args)
+        t = self.brent_line_search(d, hh, **ls_args)
         d -= t*hh
         
         ###### Construct New Conjugate Direction ######
@@ -168,7 +166,7 @@ class diff_solver(parallel_solver):
         return max(alpha1/alpha2, 0)
 
     def bracket(self,ta,tb,x,d):
-        gold,glim = (1+np.sqrt(5))/2, 100
+        gold,glim,eps = (1+np.sqrt(5))/2, 100, 1e-40
         Fa,Fb = self.F(x-ta*d), self.F(x-tb*d)
         if Fb > Fa:
             ta, tb = tb, ta
@@ -179,8 +177,9 @@ class diff_solver(parallel_solver):
         # iteratively determine tc
         while Fb > Fc:
             r, q = (tb-ta)*(Fb-Fc), (tb-tc)*(Fb-Fa)
+            sgn_qmr = np.sign(q-r) if np.sign(q-r) !=0 else 1
             tu = tb-((tb-tc)*q - (tb-ta)*r)\
-                     /(2*np.sign(q-r) * np.absolute(max(np.absolute(q-r),1e-20)))
+                     /(2*sgn_qmr * np.absolute(max(np.absolute(q-r),eps)))
             tulim = tb + glim*(tc-tb)
             if ((tb-tu)*(tu-tc)) > 0:
                 Fu = self.F(x-tu*d)
@@ -208,10 +207,10 @@ class diff_solver(parallel_solver):
             Fa, Fb, Fc = Fb, Fc, Fu
         return (ta, tb, tc), (Fa, Fb, Fc)
     
-    def brent_line_search(self,ts,Fs,x,d,tol=1e-4,maxiter=100):
-        
-        # consts
-        gold, eps = 1/(np.sqrt(5)+1), 1e-40
+    def brent_line_search(self,x,d,t0=1e-5,tol=1e-4,maxiter=100):
+
+        # bracketing
+        ts,Fs = self.bracket(0,t0,x,d)
         
         # initialize points
         a, b, c = ts
@@ -219,6 +218,10 @@ class diff_solver(parallel_solver):
         o, w, v = b, b, b
         Fw = Fv = Fo = self.F(x-o*d)
         e, g = 0, 0
+        
+        # consts
+        gold, eps = 1/(np.sqrt(5)+1), 1e-40
+        
 
         for i in range(maxiter):
             m = (a + b)*0.5
@@ -463,7 +466,8 @@ def read_diffsolver(path='.',prefix='data',frame=-1):
     os.chdir(cwd)
 
     # calculate current
-    q = -np.stack(np.gradient(c,*calc.dxs),axis=-1)
+    calc.distribute(calc.c,c)
+    q = -np.stack(np.gradient(calc.c,*calc.dxs),axis=-1)
     j = np.einsum('abcij,abcj->abci',calc.d,q)
 
     return calc, c, q[calc.ind], j[calc.ind]
