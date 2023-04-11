@@ -431,6 +431,18 @@ class diff_solver(parallel_solver):
 
 
 ##### helper functions #####
+def normalize_parameters(calc):
+    # normalize paramters before calculation
+    # greatly enhances stability for small d's
+    Tr_d = np.diagonal(calc.d[calc.ind],axis1=-2,axis2=-1).mean(axis=-1)
+    d_mean = calc.par_sum(Tr_d)/np.prod(calc.Ns)
+    calc.d/=d_mean
+    _,F_max = calc.dF(calc.c,np.zeros_like(calc.c))
+
+    calc.parprint(f'normalized diffusivity d by {d_mean}, with F_max:{F_max}')
+
+    return d_mean, F_max
+
 def read_diffsolver_args(path='.'):
     # read in dictionary object
     dct = pickle.load(open(os.path.join(path,'diff_solver.pckl'),'rb'))
