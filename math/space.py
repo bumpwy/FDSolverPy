@@ -5,13 +5,23 @@ class Grid:
     def __init__(self,ns,Ls,origin=0):
         self.ns, self.Ls = ns, Ls
         self.dxs = [L/n for L,n in zip(Ls,ns)]
-
+        
+        # origin of grid
         if origin == 0:
             origin = [0,0,0]
+        
+        # center of grid
+        self.center = [o + L/2 for o,L in zip(origin,Ls)]
+
+        # building the grid
         self.xs = [np.mgrid[0:L:dx]+origin for L,dx,origin in zip(self.Ls,self.dxs,origin)]
         self.xxs = np.meshgrid(*self.xs,indexing='ij')
 
-        self.center = [o + L/2 for o,L in zip(origin,Ls)]
+        # for 1D grids, it's often convenient to have short hand names
+        if len(ns)==1:
+            self.n, self.L, self.dx = self.ns[0], self.Ls[0], self.dxs[0]
+            self.x = self.xs[0]
+        
 
 # differential operators in finite difference
 def grad(phi,grid):
