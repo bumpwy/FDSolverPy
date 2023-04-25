@@ -494,8 +494,14 @@ def write_inputs(path,input_dct,C,D):
     pickle.dump(input_dct,\
                 open(os.path.join(path,'diff_solver.pckl'),'wb'),\
                 protocol=-1)
-    np.savez_compressed(os.path.join(path,'C.npz'),C=C)
-    np.savez_compressed(os.path.join(path,'D.npz'),D=D)
+    if isinstance(C,str):
+        subprocess.call(f'cp {C} {os.path.join(path,"C.npz")',shell=True)
+    else:
+        np.savez_compressed(os.path.join(path,'C.npz'),C=C)
+    if isinstance(D,str):
+        subprocess.call(f'cp {D} {os.path.join(path,"D.npz")',shell=True)
+    else:
+        np.savez_compressed(os.path.join(path,'D.npz'),D=D)
 
 # create the initial concentration field according to Q-vector
 # if Q is not provided, i.e. Q=None, a randomized unit vector will be used
