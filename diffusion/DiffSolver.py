@@ -10,6 +10,7 @@ from FDSolverPy.base.ParallelSolver import *
 from FDSolverPy.math.space import *
 from datetime import datetime
 import itertools as it
+import jax.numpy as jnp
 
 
 
@@ -467,7 +468,11 @@ def read_diffsolver_data(path='.',prefix='data',frame=-1):
     while not os.path.exists(os.path.join(data_path,f'c.{count}')):
         count -= 1
     print(f'Reading the {count}th frame...')
-    C = np.fromfile(os.path.join(data_path,f'c.{count}'),dtype=np.double).reshape(Ns,order='F')
+    
+    buff = open(os.path.join(data_path,f'c.{count}'),'rb').read()
+    C_stream = np.frombuffer(buff,dtype=np.uint8)
+    C = C_stream.view(dtype=np.double).reshape(Ns,order='F')
+
 
     return dct, C
     
@@ -495,11 +500,12 @@ def write_inputs(path,input_dct,C,D):
                 open(os.path.join(path,'diff_solver.pckl'),'wb'),\
                 protocol=-1)
     if isinstance(C,str):
-        subprocess.call(f'cp {C} {os.path.join(path,"C.npz")',shell=True)
+        subprocess.call(f'cp {C} {os.path.join(path,"C.npz")}',shell=True)
     else:
         np.savez_compressed(os.path.join(path,'C.npz'),C=C)
+
     if isinstance(D,str):
-        subprocess.call(f'cp {D} {os.path.join(path,"D.npz")',shell=True)
+        subprocess.call(f'cp {D} {os.path.join(path,"D.npz")}',shell=True)
     else:
         np.savez_compressed(os.path.join(path,'D.npz'),D=D)
 

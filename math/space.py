@@ -3,18 +3,19 @@ import matplotlib.pyplot as py
 
 class Grid:
     def __init__(self,ns,Ls,origin=0):
-        self.ns, self.Ls = ns, Ls
-        self.dxs = [L/n for L,n in zip(Ls,ns)]
+        self.ns, self.Ls = np.asarray(ns), np.asarray(Ls)
+        self.dxs = np.asarray([L/n for L,n in zip(Ls,ns)])
         
         # origin of grid
         if origin == 0:
-            origin = [0,0,0]
+            origin = np.asarray([0,0,0])
         
         # center of grid
-        self.center = [o + L/2 for o,L in zip(origin,Ls)]
+        self.center = np.asarray([o + L/2 for o,L in zip(origin,Ls)])
 
         # building the grid
-        self.xs = [np.mgrid[0:L:dx]+origin for L,dx,origin in zip(self.Ls,self.dxs,origin)]
+        self.xs = np.asarray([np.mgrid[0:L:dx]+origin \
+                         for L,dx,origin in zip(self.Ls,self.dxs,origin)])
         self.xxs = np.meshgrid(*self.xs,indexing='ij')
 
         # for 1D grids, it's often convenient to have short hand names
@@ -22,11 +23,9 @@ class Grid:
             self.n, self.L, self.dx = self.ns[0], self.Ls[0], self.dxs[0]
             self.x = self.xs[0]
         
-
 # differential operators in finite difference
 def grad(phi,grid):
     return np.stack(np.gradient(phi,*grid.dxs),axis=-1)
-
 
 # differential operators for pbc systems
 def diff_fft(phi,grid,axis=0):
@@ -86,8 +85,8 @@ def inv_lapl_fft(phi,grid):
     ks = [np.fft.fftfreq(n,dx)*2*np.pi for n,dx in zip(grid.ns,grid.dxs)]
     kks = np.meshgrid(*ks,indexing='ij')
     diff_ks = [1j*kk for kk in kks]
-    lapl_kernel = np.sum([diff_k**2 for diff_k in diff_ks],axis=0)
-    lapl_kernel[lapl_kernel==0] = np.inf
+    lapl_kernel = np.sum(np.asarray([diff_k**2 for diff_k in diff_ks]),axis=0)
+    lapl_kernel[lapl_kernel==0] = (np.inf)
 
     # result_k
     R_k = phi_k/lapl_kernel

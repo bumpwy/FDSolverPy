@@ -29,14 +29,14 @@ class parallel_solver():
         self.rank,self.comm_size = self.comm.rank, self.comm.size
 
         ##### testing #####
-        coords_list = [self.comm.Get_coords(i) for i in range(self.comm.size)]
-        self.sizes_list = []
-        for c in coords_list:
-            s = 1
-            for i in range(self.ndim):
-                s *= self.ns_list[i][c[i]]
-            self.sizes_list += [s]
-        self.d1_disps_list = np.cumsum([0]+self.sizes_list[:-1])
+        #coords_list = [self.comm.Get_coords(i) for i in range(self.comm.size)]
+        #self.sizes_list = []
+        #for c in coords_list:
+        #    s = 1
+        #    for i in range(self.ndim):
+        #        s *= self.ns_list[i][c[i]]
+        #    self.sizes_list += [s]
+        #self.d1_disps_list = np.cumsum([0]+self.sizes_list[:-1])
         ##### testing #####
      
         # local grid
