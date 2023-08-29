@@ -19,7 +19,7 @@ class diff_solver(parallel_solver):
                  # inputs for grid
                  Xs,ghost=2,
                  # pbc
-                 pbc=(0,0,0),
+                 pbc=0,
                  # diffusivity
                  D='D.npz',
                  # variable initialization
@@ -51,9 +51,11 @@ class diff_solver(parallel_solver):
         self.distribute(self.c,C_array)
 
         # for speed
+        ndim_indices = 'abc'
+        ndim_index = ndim_indices[:self.ndim]
         ops = self.d,tuple(self.nes+[self.ndim])
-        self.J_oe_expr = oe.contract_expression('abcij,abcj->abci', *ops, constants=[0])
-        self.e_oe_expr = oe.contract_expression('abci,abci->abc',\
+        self.J_oe_expr = oe.contract_expression(f'{ndim_index}ij,{ndim_index}j->{ndim_index}i', *ops, constants=[0])
+        self.e_oe_expr = oe.contract_expression(f'{ndim_index}i,{ndim_index}i->{ndim_index}',\
                                                 tuple(self.nes+[self.ndim]),\
                                                 tuple(self.nes+[self.ndim]))
 
@@ -146,7 +148,6 @@ class diff_solver(parallel_solver):
     def cg_integrate(self,d,hh,g0,g1,ls_args={}):
        
         ###### The Line Search #####
-        #t = self.golden_line_search(hh,d,**ls_args)
         t = self.brent_line_search(d, hh, **ls_args)
         d -= t*hh
         
@@ -275,91 +276,6 @@ class diff_solver(parallel_solver):
                     v, Fv = u, Fu
         return o
 
-
-
-
-    def golden_line_search(self,dF_d,d,mu=1e-6,tol_l=1e-2):
-        ###### The Golden Line Search #####
-        # point 0 ...................
-        alpha0 = 0
-        Fe0 = self.F(d-alpha0*dF_d)
-        # point 1 ...................
-        alpha1 = mu
-        Fe1 = self.F(d-alpha1*dF_d)
-        #self.parprint('point 1...')
-        while Fe1>Fe0:
-            #self.parprint(Fe1)
-            alpha1 /= 2
-            Fe1 = self.F(d-alpha1*dF_d)
-        # point 2 ...................
-        alpha2 = alpha1*10
-        Fe2 = self.F(d-alpha2*dF_d)
-        #self.parprint('point 2...')
-        while Fe2<Fe1:
-            #self.parprint(Fe2)
-            alpha2*=10
-            Fe2 = self.F(d-alpha2*dF_d)
-        # now we do the line search......
-        h = alpha2-alpha0
-        invphi = (np.sqrt(5)-1)/2
-        invphi2 = (3-np.sqrt(5))/2
-        n = int(np.ceil(np.log(tol_l/h)/np.log(invphi)))
-        c = alpha0 + invphi2*h
-        dd = alpha0 + invphi*h
-        Fec = self.F(d-c*dF_d)
-        Fed = self.F(d-dd*dF_d)
-        #self.parprint('line search...')
-        for k in range(n-1):
-            #self.parprint(k,Fed)
-            if Fec<Fed:
-                alpha2 = dd
-                dd = c
-                Fed = Fec
-                h *= invphi
-                c = alpha0 + invphi2*h
-                Fec = self.F(d-c*dF_d)
-            else:
-                alpha0 = c
-                c = dd
-                Fec = Fed
-                h*=invphi
-                dd = alpha0 + invphi*h
-                Fed = self.F(d-dd*dF_d)
-        if Fec < Fed:
-            if Fe1<Fec:
-                return alpha1
-            else:
-                return 0.5*(alpha0+dd)
-        else:
-            if Fe1<Fed:
-                return alpha1
-            else:
-                return 0.5*(c+alpha2)
-    
-    def wolfe_line_search(self,dF_d,d,mask=None,t=1.,c1=1e-5,c2=0.01,a=0.,b=100.):
-        dF0,dF1 = np.zeros_like(dF_d),np.zeros_like(dF_d)
-        Fe0,Err0 = self.dF(d,dF0)
-        fp0 = (self.comm.allreduce(sendobj=np.sum(dF_d*dF0),op=MPI.SUM))
-        self.parprint(Fe0)
-        while True:
-            Fe1,Err1 = self.dF(d-t*dF_d,dF1)
-            self.parprint(Fe1)
-            fp1 = (self.comm.allreduce(sendobj=np.sum(dF_d*dF1),op=MPI.SUM))
-            if Fe1 > (Fe0 - c1*t*fp0):
-                b=t
-                t=(a+b)/2
-            elif fp1 > c2*fp0:
-                a=t
-                t=(a+b)/2
-            else:
-                break
-        return t
-    def backtracking_line_search(self,dF_d,Fe0,d,mask=None,t=1e-4,beta=0.5,c=1e-5):
-        fp = (self.comm.allreduce(sendobj=np.sum(dF_d**2),op=MPI.SUM))
-        while self.F(self.d-t*dF_d) > (Fe0 - c*t*fp): 
-            t*=beta
-        return t
-
     ##### energy & force #####
     def FirstDiff(self,A,axis):
         # first take gradient
@@ -375,28 +291,28 @@ class diff_solver(parallel_solver):
 
     def SecondDiff(self,A,axis):
         # first take gradient
-        diffA = np.gradient(A,self.dxs[axis],axis=axis,edge_order=1)
+        diffA = -np.gradient(A,self.dxs[axis],axis=axis)
         A_view = np.swapaxes(A,axis,0)
         diffA_view = np.swapaxes(diffA,axis,0)
         # handle edge terms
-        diffA_view[0,...] =  ( 1.0*A_view[0,...]  + 0.5*A_view[1,...])/self.dxs[axis]
-        diffA_view[1,...] =  (-1.0*A_view[0,...]  + 0.5*A_view[2,...])/self.dxs[axis]
-        diffA_view[-2,...] = (-0.5*A_view[-3,...] + 1.0*A_view[-1,...])/self.dxs[axis]
-        diffA_view[-1,...] = (-0.5*A_view[-2,...] - 1.0*A_view[-1,...])/self.dxs[axis]
+        diffA_view[0,...] =  (- 1.0*A_view[0,...]  - 0.5*A_view[1,...])/self.dxs[axis]
+        diffA_view[1,...] =  (+ 1.0*A_view[0,...]  - 0.5*A_view[2,...])/self.dxs[axis]
+        diffA_view[-2,...] = (+ 0.5*A_view[-3,...] - 1.0*A_view[-1,...])/self.dxs[axis]
+        diffA_view[-1,...] = (+ 0.5*A_view[-2,...] + 1.0*A_view[-1,...])/self.dxs[axis]
 
         return diffA
  
     def F(self,c):
         # calculate energy
         self.update_boundary(c)
-        #gradCs = np.stack(np.gradient(c,*self.dxs),axis=-1)
-        gradCs = np.stack([self.FirstDiff(c,i) for i in range(self.ndim)],axis=-1)
+        gradCs = np.stack(np.gradient(c,*self.dxs),axis=-1)
+        #gradCs = np.stack([self.FirstDiff(c,i) for i in range(self.ndim)],axis=-1)
 
         ##### NumPy #####
-        J = self.J_oe_expr(gradCs)
-        e_density = 0.5*self.e_oe_expr(J,gradCs)
+        J = self.J_oe_expr(-gradCs)
+        e_density = 0.5*self.e_oe_expr(J,-gradCs)
          
-        return self.par_sum((e_density[self.ind]))
+        return self.par_sum((e_density[self.ind]))*np.prod(self.dxs)
 
     def dF(self,c,dF_dc,mask=None):
         # calculate energy
@@ -405,12 +321,12 @@ class diff_solver(parallel_solver):
         #gradCs = np.stack([self.FirstDiff(c,i) for i in range(self.ndim)],axis=-1)
        
         ##### NumPy approach #####
-        J = self.J_oe_expr(gradCs)
-        #e_density = 0.5*self.e_oe_expr(J,gradCs)
+        J = self.J_oe_expr(-gradCs)
+        e_density = 0.5*self.e_oe_expr(J,-gradCs)
        
         # calculate force
-        #dF_dc[:] = sum([-self.SecondDiff(J[...,i],i) for i in range(self.ndim)])
-        dF_dc[:] = sum([-np.gradient(J[...,i],dx,axis=i) for i,dx in enumerate(self.dxs)])/np.prod(self.dxs)
+        dF_dc[:] = sum([self.SecondDiff(-J[...,i],i) for i in range(self.ndim)])
+        #dF_dc[:] = sum([-np.gradient(J[...,i],dx,axis=i) for i,dx in enumerate(self.dxs)])/np.prod(self.dxs)
 
         # here we apply a fix boundary condition
         self.fix_boundary(dF_dc)
@@ -419,9 +335,7 @@ class diff_solver(parallel_solver):
         # maximal force
         e = np.sqrt(dF_dc**2).max()
          
-        #return self.par_sum((e_density[self.ind])),\
-        #       self.comm.allreduce(sendobj=e,op=MPI.MAX)
-        return self.F(c),\
+        return self.par_sum((e_density[self.ind]))*np.prod(self.dxs),\
                self.comm.allreduce(sendobj=e,op=MPI.MAX)
     def fix_boundary(self,dF_dc):
         for i in range(self.ndim):
@@ -489,7 +403,8 @@ def read_diffsolver(path='.',prefix='data',frame=-1):
     # calculate current
     calc.distribute(calc.c,c)
     q = -np.stack(np.gradient(calc.c,*calc.dxs),axis=-1)
-    j = np.einsum('abcij,abcj->abci',calc.d,q)
+    ii = 'abc'[:calc.ndim]
+    j = np.einsum(f'{ii}ij,{ii}j->{ii}i',calc.d,q)
 
     return calc, c, q[calc.ind], j[calc.ind]
 
@@ -513,9 +428,11 @@ def write_inputs(path,input_dct,C,D):
 # if Q is not provided, i.e. Q=None, a randomized unit vector will be used
 
 def micro_delC(d,grid,Q):
+    ndim = len(grid.ns)
     grad_inv_d = grad_fft(1/d,grid)
-    f = np.einsum('abc,abci->abci',d,grad_inv_d)
-    fQ = np.einsum('abci,i->abc',f,Q)
+    indices = 'abc'[:ndim]
+    f = np.einsum(f'{indices},{indices}i->{indices}i',d,grad_inv_d)
+    fQ = np.einsum(f'{indices}i,i->{indices}',f,Q)
 
     # first order term
     del_c = -inv_lapl_fft(fQ,grid)
@@ -529,13 +446,15 @@ def macro_C0(grid,Q=None):
         Q /= np.linalg.norm(Q)
 
     # macroscopic C
-    C0 = np.einsum('i,iabc->abc',-Q,np.array(grid.xxs))
+    ndim = len(grid.ns)
+    indices = 'abc'[:ndim]
+    C0 = np.einsum(f'i,i{indices}->{indices}',-Q,np.array(grid.xxs))
 
     return C0
 
 def create_C(grid,d,Q=None):
 
-    return macro_C0(grid,Q) + micro_delC(d,grid,Q)*0.4
+    return macro_C0(grid,Q) + micro_delC(d,grid,Q)
 
 
 # calculates effective diffusivity from given calculation results
@@ -551,21 +470,22 @@ def calculate_D(paths,prefixes='data'):
     for path,prefix in zip(paths,prefixes):
         os.chdir(path)
         calc,c,q,j = read_diffsolver('.',prefix)
-        J,Q = j.mean(axis=(0,1,2)), q.mean(axis=(0,1,2))
+        axes = tuple(list(range(calc.ndim)))
+        J,Q = j.mean(axis=axes), q.mean(axis=axes)
         Js += [J]
         Qs += [Q]
         os.chdir(cwd)
     
     # Second, pick 3 out of all results and calculate effective diffusivity
     n = len(paths)
-    if n==3:
+    if n==calc.ndim:
         Jn = np.stack(Js,axis=-1)
         Qn = np.stack(Qs,axis=-1)
         D = np.einsum('in,nj->ij',Jn,np.linalg.inv(Qn))
         return D
     else:
         Ds = []
-        for trio in it.combinations(range(len(Qs)),3):
+        for trio in it.combinations(range(len(Qs)),calc.ndim):
             Jn = np.stack([Js[i] for i in trio],axis=-1)
             Qn = np.stack([Qs[i] for i in trio],axis=-1)
             Ds += [np.einsum('in,nj->ij',Jn,np.linalg.inv(Qn))]

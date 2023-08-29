@@ -11,34 +11,26 @@ from math import fsum
 import mpmath as mp
 
 class parallel_solver():
-    def __init__(self,Xs,ghost=1,pbc=(0,0,0),partition=None):
+    def __init__(self,Xs,ghost=1,pbc=0,partition=None):
 
         ########## global grid ##########
         # Grid size
-        self.pbc = pbc
         self.Ns = [len(x) for x in Xs]
         self.Xs = Xs
         self.dxs = [x[1]-x[0] for x in Xs]
         self.ndim = len(Xs)
-        self.Buffer = np.empty((self.Ns[0]*self.Ns[1]*self.Ns[2],),dtype=np.double)
+        try:
+            iter(pbc)
+            self.pbc = pbc
+        except:
+            self.pbc = [pbc]*self.ndim
         
         ########## local grid ##########
         # domain decomposition
         self.comm,self.partition,self.rank_coord,\
-            self.neighbors, self.ns_list, self.disps_list = domain_decomposition(MPI.COMM_WORLD,self.Ns,pbc,partition)
+            self.neighbors, self.ns_list, self.disps_list = domain_decomposition(MPI.COMM_WORLD,self.Ns,self.pbc,partition)
         self.rank,self.comm_size = self.comm.rank, self.comm.size
 
-        ##### testing #####
-        #coords_list = [self.comm.Get_coords(i) for i in range(self.comm.size)]
-        #self.sizes_list = []
-        #for c in coords_list:
-        #    s = 1
-        #    for i in range(self.ndim):
-        #        s *= self.ns_list[i][c[i]]
-        #    self.sizes_list += [s]
-        #self.d1_disps_list = np.cumsum([0]+self.sizes_list[:-1])
-        ##### testing #####
-     
         # local grid
         self.ghost = ghost
         self.ns = [n[coord] for n,coord in zip(self.ns_list,self.rank_coord)]
@@ -47,8 +39,8 @@ class parallel_solver():
         for i in range(self.ndim):
             # determine whether to add ghost region
             start,end = 1,1
-            if (not pbc[i]) and (self.neighbors[i][0]<0): start = 0
-            if (not pbc[i]) and (self.neighbors[i][1]<0): end = 0
+            if (not self.pbc[i]) and (self.neighbors[i][0]<0): start = 0
+            if (not self.pbc[i]) and (self.neighbors[i][1]<0): end = 0
 
             # create local grid
             self.nes += [self.ns[i]+(start+end)*ghost]
@@ -76,7 +68,7 @@ class parallel_solver():
 
         ########## output status ##########
         self.parprint("Running on %i cores"%self.comm.size)
-        self.parprint("Domain decomposition %ix%ix%i"%tuple(self.partition))
+        self.parprint("Domain decomposition"+'x'.join(map(str,self.partition)))
     def set_variables(self,varnames,dat,dat_bc,dat_type):
         # setup data pointers
         self.n_var, self.varnames = len(varnames), varnames
@@ -126,6 +118,9 @@ class parallel_solver():
         #### method 3: fast, and somewhat accurate ####
         #A=np.ravel(self.comm.allgather(ap.ksum(a.ravel(),K=2)))
         #return fsum(A)
+
+        #### method 4: fast, and not accurate ####
+        #return a.sum()
         
     def update_boundary(self,dat,*argv):
         dim = len(dat.shape)-self.ndim
