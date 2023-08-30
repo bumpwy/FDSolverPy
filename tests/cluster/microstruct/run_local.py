@@ -1,3 +1,4 @@
+# run script for local machine
 import subprocess, os
 from FDSolverPy.diffusion.DiffSolver import *
 
