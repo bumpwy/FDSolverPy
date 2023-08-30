@@ -1,0 +1,8 @@
+Metadata-Version: 2.1
+Name: fdsolverpy
+Version: 0.0.1
+Summary: simple parallelized finite difference solver package
+Home-page: https://lc.llnl.gov/gitlab/yu39/fdsolverpy
+Author: Henry Yu
+Author-email: yu39@llnl.gov
+Description-Content-Type: text/markdown
