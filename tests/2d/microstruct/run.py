@@ -5,9 +5,9 @@ from FDSolverPy.diffusion.DiffSolver import *
 from FDSolverPy.math.space import *
 
 # loads microstructure data: ns, Ls, gphi, z_active, eulers
-locals().update(np.load('./microstruct.npz'))
+locals().update(np.load('../../microstruct.npz'))
 ns,Ls = ns[:2],Ls[:2]
-gphi = gphi[:,:,0]
+gphi = gphi[:,:,0]     # take a slice from a 3-d microstructure
 gd = Grid(ns=ns,Ls=Ls)
 
 # create diffusivity field

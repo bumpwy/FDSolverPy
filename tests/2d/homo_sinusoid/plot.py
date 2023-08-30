@@ -12,17 +12,17 @@ for i in range(2):
 
     # load results
     calc, c, q, j = read_diffsolver(f'Q_{i}')
-    dF_dc = np.zeros_like(calc.c)
-    _,_ = calc.dF(calc.c,dF_dc)
+    dF_dc = np.ones_like(calc.c)
+    F,err = calc.dF(calc.c,dF_dc)
+    print(err,dF_dc.shape)
 
     # plotting
     axs[i+1].imshow(c.T,origin='lower',cmap='Blues')
-
-    # store data
-    np.save(f'c_{i}.npy',c)
+    axs[i+1].set_title(f'C-{i}',fontsize=18)
 
 # plot diffusivity
 axs[0].imshow(calc.d[...,0,0].T,origin='lower')
+axs[0].set_title(r'd($\bf{r}$)',fontsize=18)
 
 plt.show()
 

@@ -18,10 +18,11 @@ for i in range(2):
 
     # plotting
     axs[i+1].imshow(c.T,origin='lower',cmap='Blues')
-    #axs[i+1].plot(c[:,50])
+    axs[i+1].set_title(f'C-{i}',fontsize=18)
 
 # plot diffusivity
 axs[0].imshow(calc.d[...,0,0].T,origin='lower')
+axs[0].set_title(r'd($\bf{r}$)',fontsize=18)
 
 plt.show()
 
