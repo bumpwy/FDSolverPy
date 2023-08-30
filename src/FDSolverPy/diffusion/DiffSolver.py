@@ -488,7 +488,7 @@ def create_C(grid,d,Q=None):
 # calculates effective diffusivity from given calculation results
 # If three are given then spits out one D_ij, but if more are given
 # it spits out results of all combinations of 3
-def calculate_D(paths,prefixes='data'):
+def calculate_D(paths=['Q_0','Q_1','Q_2'],prefixes='data'):
     if isinstance(prefixes,str):
         prefixes = [prefixes]*len(paths)
 
