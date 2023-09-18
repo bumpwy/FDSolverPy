@@ -6,8 +6,6 @@ src/FDSolverPy/base/ParallelSolver.py
 src/FDSolverPy/diffusion/DiffSolver.py
 src/FDSolverPy/diffusion/DiffSolver_pbc.py
 src/FDSolverPy/diffusion/helper.py
-src/FDSolverPy/diffusion/run_d_eff.py
-src/FDSolverPy/diffusion/run_diffusion.py
 src/FDSolverPy/math/convolve.py
 src/FDSolverPy/math/space.py
 src/FDSolverPy/math/space_jax.py
