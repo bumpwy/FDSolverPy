@@ -84,10 +84,10 @@ class diff_solver(parallel_solver):
             counter = 0
             self.dump(outdir,counter) # store initial frame if it's a fresh start
         # store the class object as dict
-        if self.rank == 0:
-            pickle.dump(self.dict,
-                        open('diff_solver.pckl','wb'),
-                        protocol=-1)
+        #if self.rank == 0:
+        #    pickle.dump(self.dict,
+        #                open('diff_solver.pckl','wb'),
+        #                protocol=-1)
         
         ########## Optimization Setup ##########
         #self.str_to_alg(alg)

@@ -18,7 +18,7 @@ class diff_solver(parallel_solver):
                  # inputs for grid
                  Xs,ghost=2,
                  # pbc
-                 pbc=(1,1,1),
+                 pbc=1,
                  # diffusivity
                  D='D.npz',Q=np.array([1,0,0]),
                  # variable initialization
@@ -51,9 +51,11 @@ class diff_solver(parallel_solver):
         self.distribute(self.c,C_array)
 
         # for speed
+        ndim_indices = 'abc'
+        ndim_index = ndim_indices[:self.ndim]
         ops = self.d,tuple(self.nes+[self.ndim])
-        self.J_oe_expr = oe.contract_expression('abcij,abcj->abci', *ops, constants=[0])
-        self.e_oe_expr = oe.contract_expression('abci,abci->abc',\
+        self.J_oe_expr = oe.contract_expression(f'{ndim_index}ij,{ndim_index}j->{ndim_index}i', *ops, constants=[0])
+        self.e_oe_expr = oe.contract_expression(f'{ndim_index}i,{ndim_index}i->{ndim_index}',\
                                                 tuple(self.nes+[self.ndim]),\
                                                 tuple(self.nes+[self.ndim]))
 
@@ -381,7 +383,8 @@ def read_diffsolver(path='.',prefix='data',frame=-1):
 
     # calculate current
     q = -np.stack(np.gradient(calc.c,*calc.dxs),axis=-1)
-    j = np.einsum('abcij,abcj->abci',calc.d,q)
+    ii = 'abc'[:calc.ndim]
+    j = np.einsum(f'{ii}ij,{ii}j->{ii}i',calc.d,q)
 
     return calc, c, q[calc.ind], j[calc.ind]
 
