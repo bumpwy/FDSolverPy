@@ -63,7 +63,7 @@ class diff_solver(parallel_solver):
         self.dict = {'Xs':Xs,'ghost':ghost,'pbc':pbc,
                      'D':D, 'Q':Q,'C':C, 'Data_Type':Data_Type}
     def run(self,outdir='data',restart=False,
-            Nstep=100,step=1,etol=1e-4,ftol=1e-4,ls_args={}):
+            Nstep=100,step=1,etol=1e-4,ftol=1e-2,ls_args={"t0":1e-2,"tol":1e-5}):
         
         ########## Initialize Run ##########
         # setup file pointers, loading last frame, etc.
@@ -83,10 +83,10 @@ class diff_solver(parallel_solver):
             counter = 0
             self.dump(outdir,counter) # store initial frame if it's a fresh start
         # store the class object as dict
-        if self.rank == 0:
-            pickle.dump(self.dict,
-                        open('diff_solver.pckl','wb'),
-                        protocol=-1)
+        #if self.rank == 0:
+        #    pickle.dump(self.dict,
+        #                open('diff_solver.pckl','wb'),
+        #                protocol=-1)
         
         ########## Optimization Setup ##########
         #self.str_to_alg(alg)
@@ -146,8 +146,7 @@ class diff_solver(parallel_solver):
     def cg_integrate(self,d,hh,g0,g1,ls_args={}):
        
         ###### The Line Search #####
-        t = self.golden_line_search(hh,d,**ls_args)
-        #t = self.wolfe_line_search(hh,d,**ls_args)
+        t = self.brent_line_search(d, hh, **ls_args)
         d -= t*hh
         
         ###### Construct New Conjugate Direction ######
@@ -166,88 +165,114 @@ class diff_solver(parallel_solver):
         if alpha2==0: return 0
         return max(alpha1/alpha2, 0)
 
-    def golden_line_search(self,dF_d,d,mu=1e-6,tol_l=1e-2):
-        ###### The Golden Line Search #####
-        # point 0 ...................
-        alpha0 = 0
-        Fe0 = self.F(d-alpha0*dF_d)
-        # point 1 ...................
-        alpha1 = mu
-        Fe1 = self.F(d-alpha1*dF_d)
-        #self.parprint('point 1...')
-        while Fe1>Fe0:
-            #self.parprint(Fe1)
-            alpha1 /= 2
-            Fe1 = self.F(d-alpha1*dF_d)
-        # point 2 ...................
-        alpha2 = alpha1*5
-        Fe2 = self.F(d-alpha2*dF_d)
-        #self.parprint('point 2...')
-        while Fe2<Fe1:
-            #self.parprint(Fe2)
-            alpha2*=10
-            Fe2 = self.F(d-alpha2*dF_d)
-        # now we do the line search......
-        h = alpha2-alpha0
-        invphi = (np.sqrt(5)-1)/2
-        invphi2 = (3-np.sqrt(5))/2
-        n = int(np.ceil(np.log(tol_l/h)/np.log(invphi)))
-        c = alpha0 + invphi2*h
-        dd = alpha0 + invphi*h
-        Fec = self.F(d-c*dF_d)
-        Fed = self.F(d-dd*dF_d)
-        #self.parprint('line search...')
-        for k in range(n-1):
-            #self.parprint(k,Fed)
-            if Fec<Fed:
-                alpha2 = dd
-                dd = c
-                Fed = Fec
-                h *= invphi
-                c = alpha0 + invphi2*h
-                Fec = self.F(d-c*dF_d)
-            else:
-                alpha0 = c
-                c = dd
-                Fec = Fed
-                h*=invphi
-                dd = alpha0 + invphi*h
-                Fed = self.F(d-dd*dF_d)
-        if Fec < Fed:
-            if Fe1<Fec:
-                return alpha1
-            else:
-                return 0.5*(alpha0+dd)
-        else:
-            if Fe1<Fed:
-                return alpha1
-            else:
-                return 0.5*(c+alpha2)
-    
-    def wolfe_line_search(self,dF_d,d,mask=None,t=1.,c1=1e-5,c2=0.01,a=0.,b=100.):
-        dF0,dF1 = np.zeros_like(dF_d),np.zeros_like(dF_d)
-        Fe0,Err0 = self.dF(d,dF0)
-        fp0 = (self.comm.allreduce(sendobj=np.sum(dF_d*dF0),op=MPI.SUM))
-        self.parprint(Fe0)
-        while True:
-            Fe1,Err1 = self.dF(d-t*dF_d,dF1)
-            self.parprint(Fe1)
-            fp1 = (self.comm.allreduce(sendobj=np.sum(dF_d*dF1),op=MPI.SUM))
-            if Fe1 > (Fe0 - c1*t*fp0):
-                b=t
-                t=(a+b)/2
-            elif fp1 > c2*fp0:
-                a=t
-                t=(a+b)/2
-            else:
-                break
-        return t
-    def backtracking_line_search(self,dF_d,Fe0,d,mask=None,t=1e-4,beta=0.5,c=1e-5):
-        fp = (self.comm.allreduce(sendobj=np.sum(dF_d**2),op=MPI.SUM))
-        while self.F(self.d-t*dF_d) > (Fe0 - c*t*fp): 
-            t*=beta
-        return t
+    def bracket(self,ta,tb,x,d):
+        gold,glim,eps = (1+np.sqrt(5))/2, 100, 1e-40
+        Fa,Fb = self.F(x-ta*d), self.F(x-tb*d)
+        d_max = np.absolute(d).max()
+        while Fa==Fb and d_max != 0:
+            tb *= 10
+            Fb = self.F(x-tb*d)
+        if Fb > Fa:
+            ta, tb = tb, ta
+            Fa, Fb = Fb, Fa
+        tc = tb + gold*(tb-ta)
+        Fc = self.F(x-tc*d)
 
+        # iteratively determine tc
+        while Fb > Fc:
+            r, q = (tb-ta)*(Fb-Fc), (tb-tc)*(Fb-Fa)
+            sgn_qmr = np.sign(q-r) if np.sign(q-r) !=0 else 1
+            tu = tb-((tb-tc)*q - (tb-ta)*r)\
+                     /(2*sgn_qmr * np.absolute(max(np.absolute(q-r),eps)))
+            tulim = tb + glim*(tc-tb)
+            if ((tb-tu)*(tu-tc)) > 0:
+                Fu = self.F(x-tu*d)
+                if Fu < Fc:
+                    ta, tb = tb, tu
+                    Fa, Fb = Fb, Fa
+                    return (ta,tb,tc), (Fa,Fb,Fc)
+                elif Fu > Fb:
+                    tc, Fc = tu, Fu
+                    return (ta,tb,tc), (Fa,Fb,Fc)
+                tu = tc + gold*(tc-tb)
+                Fu = self.F(x-tu*d)
+            elif ((tc-tu)*(tu-tulim)) > 0:
+                Fu = self.F(x-tu*d)
+                if (Fu < Fc):
+                    tb, tc, tu = tc, tu, tu+gold*(tu-tc)
+                    Fb, Fc, Fu = Fc, Fu, self.F(x-tu*d)
+            elif ((tu-tulim)*(tulim-tc))>=0:
+                tu = tulim
+                Fu = self.F(x-tu*d)
+            else:
+                tu = tc + gold*(tc-tb)
+                Fu = self.F(x-tu*d)
+            ta, tb, tc = tb, tc, tu
+            Fa, Fb, Fc = Fb, Fc, Fu
+        return (ta, tb, tc), (Fa, Fb, Fc)
+    
+    def brent_line_search(self,x,d,t0=1e-5,tol=1e-4,maxiter=100):
+
+        # bracketing
+        ts,Fs = self.bracket(0,t0,x,d)
+        
+        # initialize points
+        a, b, c = ts
+        Fa, Fb, Fc = Fs
+        o, w, v = b, b, b
+        Fw = Fv = Fo = self.F(x-o*d)
+        e, g = 0, 0
+        
+        # consts
+        gold, eps = 1/(np.sqrt(5)+1), 1e-40
+        
+
+        for i in range(maxiter):
+            m = (a + b)*0.5
+            tol1 = tol*np.absolute(o)+eps
+            tol2 = 2*tol1
+            if np.absolute(o-m) <= (tol2-0.5*(b-a)):
+                Fmin = Fo
+                return o
+            if (np.absolute(e) > tol1):
+                r, q = (o-w)*(Fo-Fv),(o-v)*(Fo-Fw)
+                p = (o-v)*q - (o-w)*r
+                q = 2*(q-r)
+                if q>0:
+                    p = -p
+                q = np.absolute(q)
+                etemp = e
+                e = g
+                if (np.absolute(p) >= np.absolute(0.5*q*etemp)) or \
+                        (p <= q*(a-o)) or (p >= q*(b-o)):
+                    e = (a-o if (o>=m) else b-o)
+                    g = gold*e
+                else:
+                    g = p/q
+                    u = o+g
+                    if (u-a < tol2) or ((b-u)<tol2):
+                        g = np.sign(m-o)*np.absolute(tol1)
+            else:
+                e = (a-o if o>=m else b-o)
+                g = gold*e
+            u = (o+g if (np.absolute(g) >= tol1) else o+np.sign(g)*np.absolute(tol1))
+            Fu = self.F(x-u*d)
+            if Fu <= Fo:
+                if u>=o: a=o
+                else: b=o
+                v,w,o = w,o,u
+                Fv,Fw,Fo = Fw,Fo,Fu
+            else:
+                if (u<o): a=u
+                else: b=u
+                if (Fu<=Fw) or (w==o):
+                    v = w
+                    w = u
+                    Fv = Fw
+                    Fw = Fu
+                elif (Fu <= Fv) or v==o or v==w:
+                    v, Fv = u, Fu
+        return o
     ##### energy & force #####
     def FirstDiff(self,A,axis):
         # first take gradient
