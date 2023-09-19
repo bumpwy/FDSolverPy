@@ -2,7 +2,6 @@
 import json, sys
 from distutils.util import strtobool
 from argparse import ArgumentParser
-from FDSolverPy.diffusion.DiffSolver import *
 
 # Parse arguments.
 def bool_arg_type(x):
@@ -27,6 +26,9 @@ parser.add_argument('-nn','--normalize',dest='normalize',default=True,type=bool_
                           better numerical precision. This will change ftol --> ftol*F_max. default=%(default)s')
 parser.add_argument('-dim','--dimension',dest='dimension',default=3,type=int,\
                     help='the dimension of the problem e.g. 1-, 2-, or 3-d. default=%(default)s' )
+parser.add_argument('-pbc','--pbc',dest='pbc',action='store_true')
+parser.add_argument('-npbc','--non-pbc',dest='pbc',action='store_false')
+parser.set_defaults(pbc=False)
 
 # error message
 if len(sys.argv)==100:
@@ -38,7 +40,13 @@ run_args = vars(parser.parse_args())
 normalize = run_args['normalize']
 dim = run_args['dimension']
 ftol = run_args['ftol']
-del run_args['normalize'], run_args['dimension']
+pbc = run_args['pbc']
+del run_args['normalize'], run_args['dimension'], run_args['pbc']
+
+if pbc:
+    from FDSolverPy.diffusion.DiffSolver_pbc import *
+else:
+    from FDSolverPy.diffusion.DiffSolver import *
 
 cwd = os.getcwd()
 for i in range(dim):

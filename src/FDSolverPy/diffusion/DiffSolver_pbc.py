@@ -347,6 +347,17 @@ class diff_solver(parallel_solver):
 
 
 ##### helper functions #####
+def normalize_parameters(calc):
+    # normalize paramters before calculation
+    # greatly enhances stability for small d's
+    Tr_d = np.diagonal(calc.d[calc.ind],axis1=-2,axis2=-1).mean(axis=-1)
+    d_mean = calc.par_sum(Tr_d)/np.prod(calc.Ns)
+    calc.d/=d_mean
+    _,F_max = calc.dF(calc.c,np.zeros_like(calc.c))
+
+    calc.parprint(f'normalized diffusivity d by {d_mean}, with F_max:{F_max}')
+
+    return d_mean, F_max
 def read_diffsolver_args(path='.'):
     # read in dictionary object
     dct = pickle.load(open(os.path.join(path,'diff_solver.pckl'),'rb'))
@@ -382,7 +393,8 @@ def read_diffsolver(path='.',prefix='data',frame=-1):
     os.chdir(cwd)
 
     # calculate current
-    q = -np.stack(np.gradient(calc.c,*calc.dxs),axis=-1)
+    calc.distribute(calc.c,c)
+    q = calc.Q-np.stack(np.gradient(calc.c,*calc.dxs),axis=-1)
     ii = 'abc'[:calc.ndim]
     j = np.einsum(f'{ii}ij,{ii}j->{ii}i',calc.d,q)
 
@@ -397,6 +409,25 @@ def write_inputs(path,input_dct,C,D):
     np.savez_compressed(os.path.join(path,'C.npz'),C=C)
     np.savez_compressed(os.path.join(path,'D.npz'),D=D)
 
+def write_d_eff_inputs(path,D,grid,**kwargs):
+    # create path (if not exist)
+    subprocess.call(f'mkdir -p {path}',shell=True)
+
+    dim = len(grid.ns)
+    Qs = np.eye(dim)
+    for i,Q in enumerate(Qs):
+    
+        # create initial value
+        C = np.zeros(grid.ns)
+
+        # input dict
+        input_dct = {'Xs':grid.xs,'Q':Q}
+        input_dct.update(kwargs)
+
+        # write inputs
+        sub_path = os.path.join(path,f'Q_{i}')  # sub_path
+        write_inputs(sub_path,input_dct,C,D)
+
 # create the initial concentration field according to Q-vector
 # if Q is not provided, i.e. Q=None, a randomized unit vector will be used
 def create_C(xxs,Q=None):
@@ -410,7 +441,7 @@ def create_C(xxs,Q=None):
 # calculates effective diffusivity from given calculation results
 # If three are given then spits out one D_ij, but if more are given
 # it spits out results of all combinations of 3
-def calculate_D(paths,prefixes='data'):
+def calculate_D(paths=['Q_0','Q_1','Q_2'],prefixes='data'):
     if isinstance(prefixes,str):
         prefixes = [prefixes]*len(paths)
 
