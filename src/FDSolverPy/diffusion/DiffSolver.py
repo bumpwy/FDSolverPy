@@ -408,7 +408,7 @@ def read_diffsolver(path='.',prefix='data',frame=-1):
     return calc, c, q[calc.ind], j[calc.ind]
 
 # write inputs
-def write_inputs(path,input_dct,C,D):
+def write_inputs(path,input_dct,C,D,compressed=True):
     # create path (if not exist)
     subprocess.call(f'mkdir -p {path}',shell=True)
     print(f'Created input files at {path}')
@@ -422,15 +422,21 @@ def write_inputs(path,input_dct,C,D):
     if isinstance(C,str):
         subprocess.call(f'cp {C} {os.path.join(path,"C.npz")}',shell=True)
     else:
-        np.savez_compressed(os.path.join(path,'C.npz'),C=C)
+        if compressed:
+            np.savez_compressed(os.path.join(path,'C.npz'),C=C)
+        else:
+            np.savez(os.path.join(path,'C.npz'),C=C)
     
     #- D file
     if isinstance(D,str):
         subprocess.call(f'cp {D} {os.path.join(path,"D.npz")}',shell=True)
     else:
-        np.savez_compressed(os.path.join(path,'D.npz'),D=D)
+        if compressed:
+            np.savez_compressed(os.path.join(path,'D.npz'),D=D)
+        else:
+            np.savez(os.path.join(path,'D.npz'),D=D)
 
-def write_d_eff_inputs(path,D,grid,**kwargs):
+def write_d_eff_inputs(path,D,grid,compressed=True,**kwargs):
     # create path (if not exist)
     subprocess.call(f'mkdir -p {path}',shell=True)
 
@@ -447,7 +453,7 @@ def write_d_eff_inputs(path,D,grid,**kwargs):
 
         # write inputs
         sub_path = os.path.join(path,f'Q_{i}')  # sub_path
-        write_inputs(sub_path,input_dct,C,D)
+        write_inputs(sub_path,input_dct,C,D,compressed)
     
     
 
@@ -488,36 +494,53 @@ def create_C(grid,d,Q=None):
 # calculates effective diffusivity from given calculation results
 # If three are given then spits out one D_ij, but if more are given
 # it spits out results of all combinations of 3
-def calculate_D(paths=['Q_0','Q_1','Q_2'],prefixes='data'):
+def calculate_D(paths=['Q_0','Q_1','Q_2'],prefixes='data',output_calc=False):
     if isinstance(prefixes,str):
         prefixes = [prefixes]*len(paths)
 
-    # First, load all data and take mean
-    Qs,Js = [], []
+    #- First, load all data and take mean
+    #- To save time, we load the calculator only once
+    #- This assumes the same d_ij for all calculations
     cwd = os.getcwd()
+    os.chdir(paths[0])
+    dct = read_diffsolver_args()
+    calc = diff_solver(**dct)
+    os.chdir(cwd)
+
+    #- now load all data 
+    Qs,Js = [], []
     for path,prefix in zip(paths,prefixes):
-        os.chdir(path)
-        calc,c,q,j = read_diffsolver('.',prefix)
-        axes = tuple(list(range(calc.ndim)))
-        J,Q = j.mean(axis=axes), q.mean(axis=axes)
+        #- load C, Q and update calc
+        dct, C = read_diffsolver_data(path)
+        calc.Q = dct['Q']
+        calc.distribute(calc.c,C)
+        
+        #- calculate q & j
+        q = -np.stack(np.gradient(calc.c,*calc.dxs),axis=-1)
+        ii = 'abc'[:calc.ndim]
+        j = np.einsum(f'{ii}ij,{ii}j->{ii}i',calc.d,q)
+        q,j = q[calc.ind], j[calc.ind]
+        
+        #- take average 
+        J,Q = j.mean(axis=(0,1,2)), q.mean(axis=(0,1,2))
         Js += [J]
         Qs += [Q]
-        os.chdir(cwd)
     
     # Second, pick 3 out of all results and calculate effective diffusivity
     n = len(paths)
-    if n==calc.ndim:
+    if n==3:
         Jn = np.stack(Js,axis=-1)
         Qn = np.stack(Qs,axis=-1)
-        D = np.einsum('in,nj->ij',Jn,np.linalg.inv(Qn))
-        return D
+        Ds = np.einsum('in,nj->ij',Jn,np.linalg.inv(Qn))
     else:
         Ds = []
-        for trio in it.combinations(range(len(Qs)),calc.ndim):
+        for trio in it.combinations(range(len(Qs)),3):
             Jn = np.stack([Js[i] for i in trio],axis=-1)
             Qn = np.stack([Qs[i] for i in trio],axis=-1)
             Ds += [np.einsum('in,nj->ij',Jn,np.linalg.inv(Qn))]
-        return Ds
 
-    
+    if output_calc:
+        return Ds, calc
+    else:
+        return Ds
 

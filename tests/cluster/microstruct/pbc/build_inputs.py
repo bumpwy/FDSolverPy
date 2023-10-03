@@ -8,6 +8,8 @@ from FDSolverPy.math.space import *
 locals().update(np.load('../../../microstruct.npz'))
 gd = Grid(ns=ns,Ls=Ls)
 dim = len(ns)
+print(vars(gd))
+exit()
 
 
 for dd in range(2,5):

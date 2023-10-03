@@ -19,16 +19,15 @@ parser.add_argument('-s','--step',dest='step',default=10,type=int,\
 parser.add_argument('-l','--ls_args',dest='ls_args',default='{"t0":1e-2,"tol":1e-5}',type=json.loads,
                   help='line search arguments including \
                         trial step size t0 and tolerance tol, default: %(default)s')
-parser.add_argument('-r','--restart',dest='restart',default=False,type=bool_arg_type,\
-                  help='whether or not restarting from previous run, default=%(default)s')
-parser.add_argument('-nn','--normalize',dest='normalize',default=True,type=bool_arg_type,\
+parser.add_argument('-r','--restart',dest='restart',default=False,action='store_true',\
+                  help='whether or not restarting from previous run, default=%(default)')
+parser.add_argument('-nn','--normalize',dest='normalize',default=True,action='store_true',\
                     help='whether or not normalize diffusivity for \
                           better numerical precision. This will change ftol --> ftol*F_max. default=%(default)s')
 parser.add_argument('-dim','--dimension',dest='dimension',default=3,type=int,\
                     help='the dimension of the problem e.g. 1-, 2-, or 3-d. default=%(default)s' )
-parser.add_argument('-pbc','--pbc',dest='pbc',action='store_true')
-parser.add_argument('-npbc','--non-pbc',dest='pbc',action='store_false')
-parser.set_defaults(pbc=False)
+parser.add_argument('-pbc','--pbc',dest='pbc',default=False,action='store_true')
+parser.add_argument('-npbc','--non-pbc',dest='pbc',default=False,action='store_false')
 
 # error message
 if len(sys.argv)==100:
