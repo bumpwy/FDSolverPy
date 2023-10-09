@@ -320,7 +320,7 @@ class parallel_solver():
             self.update_boundary(dd)
     
     # dump data to file
-    def dump(self,outdir,counter=None):
+    def dump(self,outdir,counter=None,clean_old=False):
         
         # sync counter if it's None and increase by 1
         if counter is None:
@@ -339,9 +339,15 @@ class parallel_solver():
         
         for i in range(self.n_var):
             # filename, and also check if exists
-            full_fname = os.path.join(outdir,f'{self.varnames[i]}.{counter}')
-            if self.rank==0 and os.path.exists(full_fname): 
-                subprocess.call(f'rm {full_fname}',shell=True)
+            prefix = os.path.join(outdir,f'{self.varnames[i]}')
+            full_fname = f'{prefix}.{counter}'
+            if self.rank==0:
+                if os.path.exists(full_fname): 
+                    subprocess.call(f'rm {full_fname}',shell=True)
+                if clean_old:
+                    old_files = glob.glob(f'{prefix}.*')
+                    if old_files:
+                        subprocess.call(f'rm {prefix}.*',shell=True)
             
             # dump data
             self.dat_r[i][:] = self.dat[i][self.ind]

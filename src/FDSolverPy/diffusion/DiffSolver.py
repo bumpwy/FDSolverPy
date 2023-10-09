@@ -64,7 +64,8 @@ class diff_solver(parallel_solver):
         self.dict = {'Xs':Xs,'ghost':ghost,'pbc':pbc,
                      'D':D, 'C':C, 'Data_Type':Data_Type}
     def run(self,outdir='data',restart=False,
-            Nstep=500,step=20,etol=1e-4,ftol=1e-2,ls_args={"t0":1e-2,"tol":1e-5}):
+            Nstep=500,step=20,clean_old=True,
+            etol=1e-4,ftol=1e-2,ls_args={"t0":1e-2,"tol":1e-5}):
         
         ########## Initialize Run ##########
         # setup file pointers, loading last frame, etc.
@@ -82,7 +83,7 @@ class diff_solver(parallel_solver):
             Nstep += counter
         else:
             counter = 0
-            self.dump(outdir,counter) # store initial frame if it's a fresh start
+            self.dump(outdir,counter,clean_old) # store initial frame if it's a fresh start
         # store the class object as dict
         #if self.rank == 0:
         #    pickle.dump(self.dict,
@@ -125,7 +126,7 @@ class diff_solver(parallel_solver):
             
             # - output data
             if counter%step==0:
-                self.dump(outdir,counter)
+                self.dump(outdir,counter,clean_old)
                 self.parprint("%s%s%s%s%s"\
                                 %(('%i'%counter).ljust(10),\
                                   ('%.4e'%Fe0).ljust(15),\
@@ -133,7 +134,7 @@ class diff_solver(parallel_solver):
                                   ('%.4e'%Err).ljust(20),\
                                   str(datetime.now()-t1).ljust(15)))
         # final output
-        self.dump(outdir,counter)
+        self.dump(outdir,counter,clean_old)
         self.parprint("%s%s%s%s%s"\
                         %(('%i'%counter).ljust(10),\
                           ('%.4e'%Fe0).ljust(15),\

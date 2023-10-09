@@ -17,23 +17,5 @@ db,dgb = np.eye(dim), np.eye(dim)*10
 d = np.einsum('abc,ij->abcij',gphi,db)+\
     np.einsum('abc,ij->abcij',1-gphi,dgb)
 
-# initialize fields
-Qs = np.eye(dim)
+write_d_eff_inputs('./',d,gd)
 
-# run
-cwd = os.getcwd()
-for i,Q in enumerate(Qs):
-
-    # initialize calculator
-    os.chdir(f'Q_{i}')
-    calc = diff_solver(**read_diffsolver_args())
-    
-    # normalize parameters
-    d_mean, F_max = normalize_parameters(calc)
-
-    # calculation
-    calc.run(etol=1e-5,ftol=F_max*1e-2,
-             ls_args={'tol':1e-2},
-             Nstep=400,step=50,clean_old=True)
-    os.chdir(cwd)
-    

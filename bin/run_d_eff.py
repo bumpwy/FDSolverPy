@@ -28,6 +28,7 @@ parser.add_argument('-dim','--dimension',dest='dimension',default=3,type=int,\
                     help='the dimension of the problem e.g. 1-, 2-, or 3-d. default=%(default)s' )
 parser.add_argument('-pbc','--pbc',dest='pbc',default=False,action='store_true')
 parser.add_argument('-npbc','--non-pbc',dest='pbc',default=False,action='store_false')
+parser.add_argument('-clean','--clean_old',dest='clean_old',action='store_true')
 
 # error message
 if len(sys.argv)==100:
