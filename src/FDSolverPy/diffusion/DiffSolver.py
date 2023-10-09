@@ -4,8 +4,7 @@
 #############################################################
 import numpy as np
 import opt_einsum as oe
-import os, subprocess, pickle, gc, sys
-sys.path.append('../')
+import os, subprocess, pickle, gc, sys, json
 from FDSolverPy.base.ParallelSolver import *
 from FDSolverPy.math.space import *
 from datetime import datetime
@@ -40,6 +39,7 @@ class diff_solver(parallel_solver):
         
         # setup variables
         self.d = np.zeros(tuple(self.nes+[self.ndim,self.ndim]),dtype=D_array.dtype)
+        self.d_fac = 1
         self.c = np.zeros(tuple(self.nes),dtype=C_array.dtype)
         c_mpi_type = MPI._typedict[self.c.dtype.char]
         self.set_variables(varnames=['c'],dat=[self.c],\
@@ -134,6 +134,7 @@ class diff_solver(parallel_solver):
                                   ('%.4e'%Err).ljust(20),\
                                   str(datetime.now()-t1).ljust(15)))
         # final output
+        self.dump_macro_vars(outdir)
         self.dump(outdir,counter,clean_old)
         self.parprint("%s%s%s%s%s"\
                         %(('%i'%counter).ljust(10),\
@@ -343,6 +344,26 @@ class diff_solver(parallel_solver):
             df_dc = np.swapaxes(dF_dc,i,0)
             df_dc[0,...],df_dc[-1,...] = 0, 0
 
+    # storing macro variables
+    def dump_macro_vars(self,outdir):
+
+        # macro Q and J
+        self.update_boundary(self.c)
+        q = -np.stack(np.gradient(self.c,*self.dxs),axis=-1)
+        j = self.J_oe_expr(q)
+        Q,J = self.par_mean(q), self.par_mean(j)
+
+        # D_par and D_ser
+        D_par = self.par_mean(self.d)*self.d_fac
+        d_inv = np.linalg.inv(self.d)
+        D_ser = np.linalg.inv(self.par_mean(d_inv))*self.d_fac
+
+        # storage
+        if self.rank==0:
+            fname = os.path.join(outdir,'macro_vars.json')
+            json.dump({'Q':Q.tolist(),'J':J.tolist(),'D_par':D_par.tolist(),'D_ser':D_ser.tolist()},\
+                      open(fname,'w'),indent=4)
+
 
 
 ##### helper functions #####
@@ -350,8 +371,9 @@ def normalize_parameters(calc):
     # normalize paramters before calculation
     # greatly enhances stability for small d's
     Tr_d = np.diagonal(calc.d[calc.ind],axis1=-2,axis2=-1).mean(axis=-1)
-    d_mean = calc.par_sum(Tr_d)/np.prod(calc.Ns)
+    d_mean = calc.par_mean(Tr_d)
     calc.d/=d_mean
+    calc.d_fac = d_mean
     _,F_max = calc.dF(calc.c,np.zeros_like(calc.c))
 
     calc.parprint(f'normalized diffusivity d by {d_mean}, with F_max:{F_max}')
@@ -456,8 +478,6 @@ def write_d_eff_inputs(path,D,grid,compressed=True,**kwargs):
         sub_path = os.path.join(path,f'Q_{i}')  # sub_path
         write_inputs(sub_path,input_dct,C,D,compressed)
     
-    
-
 
 # create the initial concentration field according to Q-vector
 # if Q is not provided, i.e. Q=None, a randomized unit vector will be used

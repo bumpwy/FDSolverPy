@@ -105,23 +105,18 @@ class parallel_solver():
         n,m = np.digitize(i,self.disps_n)-1,np.digitize(j,self.disps_m)-1
         return self.comm.Get_cart_rank([n,m])
     def par_sum(self,a):
-
-        #### method 1: very slow, very accurate ####
-        #self.comm.Allgatherv([a.flatten(),MPI.DOUBLE],\
-        #                     [self.Buffer,self.sizes_list,self.d1_disps_list,MPI.DOUBLE])
-        #return fsum(self.Buffer)
-
-        #### method 2: somewhat faster, quite accurate ####
+        #### somewhat fast, quite accurate ####
         A=np.ravel(self.comm.allgather(fsum(a.ravel())))
         return fsum(A)
+    def par_mean(self,x):
+        rank = len(x.shape) - self.ndim
+        x_mean = np.zeros(x.shape[self.ndim:])
+        size = np.prod(self.Ns)
+        for i,index in enumerate(np.ndindex(tuple([self.ndim]*rank))):
+            x_mean[index] = self.par_sum(x[self.ind+index])/size
 
-        #### method 3: fast, and somewhat accurate ####
-        #A=np.ravel(self.comm.allgather(ap.ksum(a.ravel(),K=2)))
-        #return fsum(A)
+        return x_mean
 
-        #### method 4: fast, and not accurate ####
-        #return a.sum()
-        
     def update_boundary(self,dat,*argv):
         dim = len(dat.shape)-self.ndim
         if dim==0:
