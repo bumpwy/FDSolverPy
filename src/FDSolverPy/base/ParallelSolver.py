@@ -278,8 +278,6 @@ class parallel_solver():
         ############################################################
         
         ########## MPI-IO Stuff ##########
-        # open outdir
-        subprocess.call(f'mkdir -p {outdir}',shell=True)
         
         # derived array data type for MPI-IO. defines pointer to the sub-block of array for each processor
         self.dat_mpi_arraytype = \
@@ -287,7 +285,7 @@ class parallel_solver():
         [a_type.Commit() for a_type in self.dat_mpi_arraytype]
 
         # open MPI I/O file handle
-        if restart:
+        if restart and os.path.exists(outdir):
             if self.rank==0:
                 self.counter_mm = np.memmap(os.path.join(outdir,'counter.dat'),\
                                             dtype='int32',mode='r+',shape=(1,))
@@ -305,6 +303,8 @@ class parallel_solver():
                 mpifh.Close()
         else:
             if self.rank==0:
+                # open outdir
+                subprocess.call(f'mkdir -p {outdir}',shell=True)
                 # clean up old files
                 data_paths = os.path.join(outdir,'*')
                 if glob.glob(data_paths) != []:
@@ -313,7 +313,7 @@ class parallel_solver():
                 # setup counter
                 self.counter_mm = np.memmap(os.path.join(outdir,'counter.dat'),\
                                             dtype='int32',mode='w+',shape=(1,))
-                self.counter_mm[:] = -1
+                self.counter_mm[:] = 0
                 self.counter_mm.flush()
         # update boundary
         for dd in self.dat:

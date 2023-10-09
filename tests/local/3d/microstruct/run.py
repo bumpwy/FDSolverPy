@@ -34,6 +34,6 @@ for i,Q in enumerate(Qs):
     # calculation
     calc.run(etol=1e-5,ftol=F_max*1e-2,
              ls_args={'tol':1e-2},
-             Nstep=400,step=50,clean_old=True)
+             Nstep=400,step=50,restart=True,clean_old=True)
     os.chdir(cwd)
     
