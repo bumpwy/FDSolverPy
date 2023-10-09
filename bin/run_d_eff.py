@@ -1,11 +1,6 @@
 #!/usr/bin/env python
 import json, sys
-from distutils.util import strtobool
 from argparse import ArgumentParser
-
-# Parse arguments.
-def bool_arg_type(x):
-    return bool(strtobool(x))
 
 parser = ArgumentParser(usage='usage: run calculation for effective diffusivity with user supplied options')
 parser.add_argument('-e','--etol',dest='etol',default=1e-5,type=float,\
