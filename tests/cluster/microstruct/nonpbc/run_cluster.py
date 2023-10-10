@@ -9,7 +9,7 @@ alloc = {'A':'hhitemp','n':64,\
 env = {}
 run_script = '~/lib/python-packages/FDSolverPy/bin/run_d_eff.py'
 run = f'srun python -u {run_script}'+\
-       ''' -N 400 -s 100 -e 1e-5 -f 1e-2 -l '{"t0":1e-2,"tol":1e-4}' -nn True'''
+       ''' -N 400 -s 100 -e 1e-5 -f 1e-2 -l '{"t0":1e-2,"tol":1e-4}' -nn -clean'''
 ##### slurm job allocation #####
 
 

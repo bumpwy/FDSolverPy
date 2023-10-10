@@ -350,7 +350,7 @@ class diff_solver(parallel_solver):
         # macro Q and J
         self.update_boundary(self.c)
         q = -np.stack(np.gradient(self.c,*self.dxs),axis=-1)
-        j = self.J_oe_expr(q)
+        j = self.J_oe_expr(q)*self.d_fac
         Q,J = self.par_mean(q), self.par_mean(j)
 
         # D_par and D_ser
@@ -515,53 +515,50 @@ def create_C(grid,d,Q=None):
 # calculates effective diffusivity from given calculation results
 # If three are given then spits out one D_ij, but if more are given
 # it spits out results of all combinations of 3
-def calculate_D(paths=['Q_0','Q_1','Q_2'],prefixes='data',output_calc=False):
+def calculate_D(paths=['Q_0','Q_1','Q_2'],prefixes='data',output='D_eff.json'):
     if isinstance(prefixes,str):
         prefixes = [prefixes]*len(paths)
-
-    #- First, load all data and take mean
-    #- To save time, we load the calculator only once
-    #- This assumes the same d_ij for all calculations
-    cwd = os.getcwd()
-    os.chdir(paths[0])
-    dct = read_diffsolver_args()
-    calc = diff_solver(**dct)
-    os.chdir(cwd)
 
     #- now load all data 
     Qs,Js = [], []
     for path,prefix in zip(paths,prefixes):
-        #- load C, Q and update calc
-        dct, C = read_diffsolver_data(path)
-        calc.Q = dct['Q']
-        calc.distribute(calc.c,C)
-        
-        #- calculate q & j
-        q = -np.stack(np.gradient(calc.c,*calc.dxs),axis=-1)
-        ii = 'abc'[:calc.ndim]
-        j = np.einsum(f'{ii}ij,{ii}j->{ii}i',calc.d,q)
-        q,j = q[calc.ind], j[calc.ind]
-        
-        #- take average 
-        J,Q = j.mean(axis=(0,1,2)), q.mean(axis=(0,1,2))
+        macro_vars_file = os.path.join(path,prefix,'macro_vars.json')
+        if os.path.isfile(macro_vars_file):
+            dat = json.load(open(macro_vars_file,'r'))
+            J,Q,D_par,D_ser = dat['J'], dat['Q'], dat['D_par'], dat['D_ser']
+        else:
+            #- load C, Q and update calc
+            calc = diff_solver(**read_diffsolver_args())
+            dct, C = read_diffsolver_data(path)
+            calc.Q = dct['Q']
+            calc.distribute(calc.c,C)
+            
+            #- calculate q & j
+            q = -np.stack(np.gradient(calc.c,*calc.dxs),axis=-1)
+            j = np.einsum(f'...ij,...j->...i',calc.d,q)
+            q,j = q[calc.ind], j[calc.ind]
+            
+            #- take average 
+            axes = tuple(range(calc.ndim))
+            J,Q = j.mean(axis=axes), q.mean(axis=axes)
+    
         Js += [J]
         Qs += [Q]
     
     # Second, pick 3 out of all results and calculate effective diffusivity
     n = len(paths)
-    if n==3:
+    ndim = len(Js[0])
+    if n==ndim:
         Jn = np.stack(Js,axis=-1)
         Qn = np.stack(Qs,axis=-1)
         Ds = np.einsum('in,nj->ij',Jn,np.linalg.inv(Qn))
     else:
         Ds = []
-        for trio in it.combinations(range(len(Qs)),3):
+        for trio in it.combinations(range(len(Qs)),ndim):
             Jn = np.stack([Js[i] for i in trio],axis=-1)
             Qn = np.stack([Qs[i] for i in trio],axis=-1)
             Ds += [np.einsum('in,nj->ij',Jn,np.linalg.inv(Qn))]
 
-    if output_calc:
-        return Ds, calc
-    else:
-        return Ds
-
+    output_dict = {'Ds':Ds.tolist(),'D_par':D_par,'D_ser':D_ser}
+    json.dump(output_dict,open(output,'w'),indent=4)
+    return output_dict

@@ -44,9 +44,9 @@ else:
     from FDSolverPy.diffusion.DiffSolver import *
 
 cwd = os.getcwd()
-for i in range(dim):
-    path = f'Q_{i}'
-    os.chdir(path)
+Qfs = [f'Q_{i}' for i in range(dim)]
+for Qf in Qfs:
+    os.chdir(Qf)
     
     # initialize calculators
     dat = read_diffsolver_args()
@@ -60,3 +60,5 @@ for i in range(dim):
     # run calculation
     calc.run(**run_args)
     os.chdir(cwd)
+if calc.rank==0:
+    calculate_D(Qfs)
