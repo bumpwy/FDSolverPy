@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import json, sys
 from argparse import ArgumentParser
+from FDSolverPy.diffusion.DiffSolver import *
 
 parser = ArgumentParser(usage='usage: run calculation for effective diffusivity with user supplied options')
 parser.add_argument('-e','--etol',dest='etol',default=1e-5,type=float,\
@@ -50,7 +51,10 @@ for Qf in Qfs:
     
     # initialize calculators
     dat = read_diffsolver_args()
-    calc = diff_solver(**read_diffsolver_args())
+    if pbc: 
+        calc = diff_solver_pbc(**read_diffsolver_args())
+    else:
+        calc = diff_solver(**read_diffsolver_args())
 
     # normalize parameters for numerical precision?
     if normalize:

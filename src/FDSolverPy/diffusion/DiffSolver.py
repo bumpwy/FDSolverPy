@@ -319,7 +319,6 @@ class diff_solver(parallel_solver):
         # calculate energy
         self.update_boundary(c)
         gradCs = np.stack(np.gradient(c,*self.dxs),axis=-1)
-        #gradCs = np.stack([self.FirstDiff(c,i) for i in range(self.ndim)],axis=-1)
        
         ##### NumPy approach #####
         J = self.J_oe_expr(-gradCs)
@@ -327,7 +326,6 @@ class diff_solver(parallel_solver):
        
         # calculate force
         dF_dc[:] = sum([self.SecondDiff(-J[...,i],i) for i in range(self.ndim)])
-        #dF_dc[:] = sum([-np.gradient(J[...,i],dx,axis=i) for i,dx in enumerate(self.dxs)])/np.prod(self.dxs)
 
         # here we apply a fix boundary condition
         self.fix_boundary(dF_dc)
@@ -364,7 +362,75 @@ class diff_solver(parallel_solver):
             json.dump({'Q':Q.tolist(),'J':J.tolist(),'D_par':D_par.tolist(),'D_ser':D_ser.tolist()},\
                       open(fname,'w'),indent=4)
 
+##### pbc diffsolver class #####
+class diff_solver_pbc(diff_solver):
+    def __init__(self,
+                 # inputs for grid
+                 Xs,ghost=2,
+                 # diffusivity
+                 D='D.npz',Q=[1,0,0],
+                 # variable initialization
+                 C='C.npz',Data_Type=['double'],
+                 # extra (mostly for backward compatability)
+                 **kwargs):
+        # call parent constructor
+        diff_solver.__init__(self,Xs,ghost,pbc=1)
 
+        # additional parameters
+        self.Q = np.array(Q)
+
+    # overload Energy/Force functions for pbc case
+    def F(self,c):
+        # calculate energy
+        self.update_boundary(c)
+        dqs = -np.stack(np.gradient(c,*self.dxs),axis=-1)
+
+        ##### NumPy #####
+        J = self.J_oe_expr(dqs+self.Q)
+        e_density = 0.5*self.e_oe_expr(J,dqs+self.Q)
+         
+        return self.par_sum((e_density[self.ind]))
+
+    def dF(self,c,dF_dc,mask=None):
+        # calculate energy
+        self.update_boundary(c)
+        gradCs = np.stack(np.gradient(c,*self.dxs),axis=-1)
+       
+        ##### NumPy approach #####
+        J = self.J_oe_expr(dqs+self.Q)
+        e_density = 0.5*self.e_oe_expr(J,dqs+self.Q)
+       
+        # calculate force
+        dF_dc[:] = sum([-np.gradient(J[...,i],dx,axis=i) for i,dx in enumerate(self.dxs)])
+
+        # here we apply boundary condition
+        self.update_boundary(dF_dc)
+        
+        # maximal force
+        e = np.sqrt(dF_dc**2).max()
+         
+        return self.par_sum((e_density[self.ind])),\
+               self.comm.allreduce(sendobj=e,op=MPI.MAX)
+    # storing macro variables
+    def dump_macro_vars(self,outdir):
+
+        # macro Q and J
+        self.update_boundary(self.c)
+        dq = -np.stack(np.gradient(self.c,*self.dxs),axis=-1)
+        j = self.J_oe_expr(dq+self.Q)*self.d_fac
+        J = self.par_mean(j)
+
+        # D_par and D_ser
+        D_par = self.par_mean(self.d)*self.d_fac
+        d_inv = np.linalg.inv(self.d)
+        D_ser = np.linalg.inv(self.par_mean(d_inv))*self.d_fac
+
+        # storage
+        if self.rank==0:
+            fname = os.path.join(outdir,'macro_vars.json')
+            json.dump({'Q':Q.tolist(),'J':J.tolist(),'D_par':D_par.tolist(),'D_ser':D_ser.tolist()},\
+                      open(fname,'w'),indent=4)
+##### pbc diffsolver class #####
 
 ##### helper functions #####
 def normalize_parameters(calc):
@@ -526,6 +592,7 @@ def calculate_D(paths=['Q_0','Q_1','Q_2'],prefixes='data',output='D_eff.json'):
         if os.path.isfile(macro_vars_file):
             dat = json.load(open(macro_vars_file,'r'))
             J,Q,D_par,D_ser = dat['J'], dat['Q'], dat['D_par'], dat['D_ser']
+        # the following part doesn't work for pbc case
         else:
             #- load C, Q and update calc
             calc = diff_solver(**read_diffsolver_args())
