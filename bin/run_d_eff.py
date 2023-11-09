@@ -39,11 +39,6 @@ ftol = run_args['ftol']
 pbc = run_args['pbc']
 del run_args['normalize'], run_args['dimension'], run_args['pbc']
 
-if pbc:
-    from FDSolverPy.diffusion.DiffSolver_pbc import *
-else:
-    from FDSolverPy.diffusion.DiffSolver import *
-
 cwd = os.getcwd()
 Qfs = [f'Q_{i}' for i in range(dim)]
 for Qf in Qfs:
