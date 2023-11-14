@@ -84,12 +84,16 @@ class diff_solver(parallel_solver):
         else:
             counter = 0
             self.dump(outdir,counter,clean_old) # store initial frame if it's a fresh start
-        # store the class object as dict
-        #if self.rank == 0:
-        #    pickle.dump(self.dict,
-        #                open('diff_solver.pckl','wb'),
-        #                protocol=-1)
-        
+
+        # print run parameters
+        self.parprint('run parameters\n')
+        if restart:
+            self.parprint('restart calculation\n')
+        else:
+            self.parprint('start from scratch\n')
+        self.parprint(f'etol: {etol:.4e}  ftol: {ftol:.4e}\n')
+        self.parprint(f'line search args: {ls_args}\n')
+        self.parprint(f'Nstep: {Nstep}  step: {step}  clean_old: {clean_old}\n')
         ########## Optimization Setup ##########
         #self.str_to_alg(alg)
         hh,g0,g1 = [np.zeros_like(self.c) for i in range(3)]
@@ -134,7 +138,7 @@ class diff_solver(parallel_solver):
                                   ('%.4e'%Err).ljust(20),\
                                   str(datetime.now()-t1).ljust(15)))
         # final output
-        self.dump_macro_vars(outdir)
+        self.dump_macro_vars(outdir,etol=etol,ftol=ftol,Nstep=Nstep)
         self.dump(outdir,counter,clean_old)
         self.parprint("%s%s%s%s%s"\
                         %(('%i'%counter).ljust(10),\
@@ -142,7 +146,7 @@ class diff_solver(parallel_solver):
                           (f'{(Fe0-Fe_old):.4e}/{(100*DF):.4f} %').ljust(25),\
                           ('%.4e'%Err).ljust(20),\
                           str(datetime.now()-t1).ljust(15)))
-        self.parprint('Big Loop time lapse: %s'%(str(datetime.now()-t1)))
+        self.parprint('Big Loop time lapse: %s\n'%(str(datetime.now()-t1)))
         ############### The Big Loop ###############
 
     # relaxation algorithms
@@ -343,7 +347,7 @@ class diff_solver(parallel_solver):
             df_dc[0,...],df_dc[-1,...] = 0, 0
 
     # storing macro variables
-    def dump_macro_vars(self,outdir):
+    def dump_macro_vars(self,outdir,**kwargs):
 
         # macro Q and J
         self.update_boundary(self.c)
@@ -359,7 +363,8 @@ class diff_solver(parallel_solver):
         # storage
         if self.rank==0:
             fname = os.path.join(outdir,'macro_vars.json')
-            json.dump({'Q':Q.tolist(),'J':J.tolist(),'D_par':D_par.tolist(),'D_ser':D_ser.tolist()},\
+            kwargs.update({'Q':Q.tolist(),'J':J.tolist(),'D_par':D_par.tolist(),'D_ser':D_ser.tolist()})
+            json.dump(kwargs,
                       open(fname,'w'),indent=4)
 
 ##### pbc diffsolver class #####
@@ -394,7 +399,7 @@ class diff_solver_pbc(diff_solver):
     def dF(self,c,dF_dc,mask=None):
         # calculate energy
         self.update_boundary(c)
-        gradCs = np.stack(np.gradient(c,*self.dxs),axis=-1)
+        dqs = -np.stack(np.gradient(c,*self.dxs),axis=-1)
        
         ##### NumPy approach #####
         J = self.J_oe_expr(dqs+self.Q)
@@ -412,7 +417,7 @@ class diff_solver_pbc(diff_solver):
         return self.par_sum((e_density[self.ind])),\
                self.comm.allreduce(sendobj=e,op=MPI.MAX)
     # storing macro variables
-    def dump_macro_vars(self,outdir):
+    def dump_macro_vars(self,outdir,**kwargs):
 
         # macro Q and J
         self.update_boundary(self.c)
@@ -428,7 +433,8 @@ class diff_solver_pbc(diff_solver):
         # storage
         if self.rank==0:
             fname = os.path.join(outdir,'macro_vars.json')
-            json.dump({'Q':Q.tolist(),'J':J.tolist(),'D_par':D_par.tolist(),'D_ser':D_ser.tolist()},\
+            kwargs.update({'Q':Q.tolist(),'J':J.tolist(),'D_par':D_par.tolist(),'D_ser':D_ser.tolist()})
+            json.dump(kwargs,
                       open(fname,'w'),indent=4)
 ##### pbc diffsolver class #####
 
