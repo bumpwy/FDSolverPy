@@ -173,12 +173,12 @@ class diff_solver(parallel_solver):
         return max(alpha1/alpha2, 0)
 
     def bracket(self,ta,tb,x,d):
-        gold,glim,eps = (1+np.sqrt(5))/2, 100, 1e-40
+        gold,glim,eps = (1+np.sqrt(5))/2, 100, 1e-20
         Fa,Fb = self.F(x-ta*d), self.F(x-tb*d)
         d_max = np.absolute(d).max()
-        while Fa==Fb and d_max != 0:
-            tb *= 10
-            Fb = self.F(x-tb*d)
+        #while Fa==Fb and d_max != 0:
+        #    tb *= 10
+        #    Fb = self.F(x-tb*d)
         if Fb > Fa:
             ta, tb = tb, ta
             Fa, Fb = Fb, Fa
