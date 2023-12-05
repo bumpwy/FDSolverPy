@@ -104,13 +104,12 @@ class diff_solver(parallel_solver):
         ############### The Big Loop ###############
         t1 = datetime.now()
         self.parprint('Big Loop Begins...')
-        self.parprint("%s%s%s%s%s"\
-                       %('it(#)'.ljust(10),'F(eV)'.ljust(15),'dF(eV)'.ljust(25),\
+        self.parprint("%s%s%s%s"\
+                       %('it(#)'.ljust(10),'F(eV)'.ljust(25),\
                          'Force_max(eV/A)'.ljust(20),'Time(h:m:s)'.ljust(15)))
-        self.parprint("%s%s%s%s%s"\
+        self.parprint("%s%s%s%s"\
                         %(('%i'%counter).ljust(10),\
-                          ('%.4e'%Fe0).ljust(15),\
-                          (f'').ljust(25),\
+                          ('%.12e'%Fe0).ljust(25),\
                           ('%.4e'%Err).ljust(20),\
                           str(datetime.now()-t1).ljust(15)))
         
@@ -131,19 +130,20 @@ class diff_solver(parallel_solver):
             # - output data
             if counter%step==0:
                 self.dump(outdir,counter,clean_old)
-                self.parprint("%s%s%s%s%s"\
+                self.parprint("%s%s%s%s"\
                                 %(('%i'%counter).ljust(10),\
-                                  ('%.4e'%Fe0).ljust(15),\
-                                  (f'{(Fe0-Fe_old):.4e}/{(100*DF):.4f} %').ljust(25),\
+                                  ('%.12e'%Fe0).ljust(25),\
                                   ('%.4e'%Err).ljust(20),\
                                   str(datetime.now()-t1).ljust(15)))
         # final output
-        self.dump_macro_vars(outdir,etol=etol,ftol=ftol,Nstep=Nstep)
+        self.dump_macro_vars(outdir,\
+                             etol_target=etol,etol_current=DF,\
+                             ftol_target=ftol,ftol_current=Err,\
+                             Nstep=Nstep,counter=counter)
         self.dump(outdir,counter,clean_old)
-        self.parprint("%s%s%s%s%s"\
+        self.parprint("%s%s%s%s"\
                         %(('%i'%counter).ljust(10),\
-                          ('%.4e'%Fe0).ljust(15),\
-                          (f'{(Fe0-Fe_old):.4e}/{(100*DF):.4f} %').ljust(25),\
+                          ('%.12e'%Fe0).ljust(25),\
                           ('%.4e'%Err).ljust(20),\
                           str(datetime.now()-t1).ljust(15)))
         self.parprint('Big Loop time lapse: %s\n'%(str(datetime.now()-t1)))
@@ -176,12 +176,13 @@ class diff_solver(parallel_solver):
         gold,glim,eps = (1+np.sqrt(5))/2, 100, 1e-20
         Fa,Fb = self.F(x-ta*d), self.F(x-tb*d)
         d_max = np.absolute(d).max()
-        #while Fa==Fb and d_max != 0:
-        #    tb *= 10
-        #    Fb = self.F(x-tb*d)
+        
+        # what to do if not downhill? (tb too big)
         if Fb > Fa:
-            ta, tb = tb, ta
-            Fa, Fb = Fb, Fa
+            tb /= gold
+            Fb = self.F(x-tb*d)
+            #ta, tb = tb, ta
+            #Fa, Fb = Fb, Fa
         tc = tb + gold*(tb-ta)
         Fc = self.F(x-tc*d)
 
@@ -232,7 +233,6 @@ class diff_solver(parallel_solver):
         
         # consts
         gold, eps = 1/(np.sqrt(5)+1), 1e-40
-        
 
         for i in range(maxiter):
             m = (a + b)*0.5
@@ -279,6 +279,7 @@ class diff_solver(parallel_solver):
                     Fw = Fu
                 elif (Fu <= Fv) or v==o or v==w:
                     v, Fv = u, Fu
+        self.parprint('reached maxiter')
         return o
 
     ##### energy & force #####
