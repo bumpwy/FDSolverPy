@@ -5,6 +5,7 @@ class Grid:
     def __init__(self,ns,Ls,origin=0):
         self.ns, self.Ls = np.asarray(ns), np.asarray(Ls)
         self.dxs = np.asarray([L/n for L,n in zip(Ls,ns)])
+        self.ndim = len(ns)
         
         # origin of grid
         if origin == 0:

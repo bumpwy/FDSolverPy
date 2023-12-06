@@ -15,7 +15,7 @@ import itertools as it
 class diff_solver(parallel_solver):
     def __init__(self,
                  # inputs for grid
-                 Xs,ghost=2,
+                 GD,ghost=2,
                  # pbc
                  pbc=0,
                  # diffusivity
@@ -25,7 +25,7 @@ class diff_solver(parallel_solver):
                  # extra (mostly for backward compatability)
                  **kwargs):
         # call parent constructor
-        parallel_solver.__init__(self,Xs,ghost,pbc=pbc)
+        parallel_solver.__init__(self,GD,ghost,pbc=pbc)
         
         # load variables
         if type(D) is str: 
@@ -38,7 +38,7 @@ class diff_solver(parallel_solver):
             C_array = C
         
         # setup variables
-        self.d = np.zeros(tuple(self.nes+[self.ndim,self.ndim]),dtype=D_array.dtype)
+        self.d = np.zeros(tuple(self.nes+[self.GD.ndim,self.GD.ndim]),dtype=D_array.dtype)
         self.d_fac = 1
         self.c = np.zeros(tuple(self.nes),dtype=C_array.dtype)
         c_mpi_type = MPI._typedict[self.c.dtype.char]
@@ -51,17 +51,17 @@ class diff_solver(parallel_solver):
 
         # for speed
         ndim_indices = 'abc'
-        ndim_index = ndim_indices[:self.ndim]
-        ops = self.d,tuple(self.nes+[self.ndim])
+        ndim_index = ndim_indices[:self.GD.ndim]
+        ops = self.d,tuple(self.nes+[self.GD.ndim])
         self.J_oe_expr = oe.contract_expression(f'{ndim_index}ij,{ndim_index}j->{ndim_index}i', *ops, constants=[0])
         self.e_oe_expr = oe.contract_expression(f'{ndim_index}i,{ndim_index}i->{ndim_index}',\
-                                                tuple(self.nes+[self.ndim]),\
-                                                tuple(self.nes+[self.ndim]))
+                                                tuple(self.nes+[self.GD.ndim]),\
+                                                tuple(self.nes+[self.GD.ndim]))
 
         # parameters
         self.C = C
         # store parameters
-        self.dict = {'Xs':Xs,'ghost':ghost,'pbc':pbc,
+        self.dict = {'GD':GD,'ghost':ghost,'pbc':pbc,
                      'D':D, 'C':C, 'Data_Type':Data_Type}
     def run(self,outdir='data',restart=False,
             Nstep=500,step=20,clean_old=True,
@@ -285,7 +285,7 @@ class diff_solver(parallel_solver):
     ##### energy & force #####
     def FirstDiff(self,A,axis):
         # first take gradient
-        diffA = np.gradient(A,self.dxs[axis],axis=axis,edge_order=1)
+        diffA = np.gradient(A,self.GD.dxs[axis],axis=axis,edge_order=1)
         A_view = np.swapaxes(A,axis,0)
         diffA_view = np.swapaxes(diffA,axis,0)
         
@@ -297,40 +297,39 @@ class diff_solver(parallel_solver):
 
     def SecondDiff(self,A,axis):
         # first take gradient
-        diffA = -np.gradient(A,self.dxs[axis],axis=axis)
+        diffA = -np.gradient(A,self.GD.dxs[axis],axis=axis)
         A_view = np.swapaxes(A,axis,0)
         diffA_view = np.swapaxes(diffA,axis,0)
         # handle edge terms
-        diffA_view[0,...] =  (- 1.0*A_view[0,...]  - 0.5*A_view[1,...])/self.dxs[axis]
-        diffA_view[1,...] =  (+ 1.0*A_view[0,...]  - 0.5*A_view[2,...])/self.dxs[axis]
-        diffA_view[-2,...] = (+ 0.5*A_view[-3,...] - 1.0*A_view[-1,...])/self.dxs[axis]
-        diffA_view[-1,...] = (+ 0.5*A_view[-2,...] + 1.0*A_view[-1,...])/self.dxs[axis]
+        diffA_view[0,...] =  (- 1.0*A_view[0,...]  - 0.5*A_view[1,...])/self.GD.dxs[axis]
+        diffA_view[1,...] =  (+ 1.0*A_view[0,...]  - 0.5*A_view[2,...])/self.GD.dxs[axis]
+        diffA_view[-2,...] = (+ 0.5*A_view[-3,...] - 1.0*A_view[-1,...])/self.GD.dxs[axis]
+        diffA_view[-1,...] = (+ 0.5*A_view[-2,...] + 1.0*A_view[-1,...])/self.GD.dxs[axis]
 
         return diffA
  
     def F(self,c):
         # calculate energy
         self.update_boundary(c)
-        gradCs = np.stack(np.gradient(c,*self.dxs),axis=-1)
-        #gradCs = np.stack([self.FirstDiff(c,i) for i in range(self.ndim)],axis=-1)
+        gradCs = np.stack(np.gradient(c,*self.GD.dxs),axis=-1)
 
         ##### NumPy #####
         J = self.J_oe_expr(-gradCs)
         e_density = 0.5*self.e_oe_expr(J,-gradCs)
          
-        return self.par_sum((e_density[self.ind]))*np.prod(self.dxs)
+        return self.par_sum((e_density[self.ind]))*np.prod(self.GD.dxs)
 
     def dF(self,c,dF_dc,mask=None):
         # calculate energy
         self.update_boundary(c)
-        gradCs = np.stack(np.gradient(c,*self.dxs),axis=-1)
+        gradCs = np.stack(np.gradient(c,*self.GD.dxs),axis=-1)
        
         ##### NumPy approach #####
         J = self.J_oe_expr(-gradCs)
         e_density = 0.5*self.e_oe_expr(J,-gradCs)
        
         # calculate force
-        dF_dc[:] = sum([self.SecondDiff(-J[...,i],i) for i in range(self.ndim)])
+        dF_dc[:] = sum([self.SecondDiff(-J[...,i],i) for i in range(self.GD.ndim)])
 
         # here we apply a fix boundary condition
         self.fix_boundary(dF_dc)
@@ -339,10 +338,10 @@ class diff_solver(parallel_solver):
         # maximal force
         e = np.sqrt(dF_dc**2).max()
          
-        return self.par_sum((e_density[self.ind]))*np.prod(self.dxs),\
+        return self.par_sum((e_density[self.ind]))*np.prod(self.GD.dxs),\
                self.comm.allreduce(sendobj=e,op=MPI.MAX)
     def fix_boundary(self,dF_dc):
-        for i in range(self.ndim):
+        for i in range(self.GD.ndim):
             if self.pbc[i]: continue
             df_dc = np.swapaxes(dF_dc,i,0)
             df_dc[0,...],df_dc[-1,...] = 0, 0
@@ -352,7 +351,7 @@ class diff_solver(parallel_solver):
 
         # macro Q and J
         self.update_boundary(self.c)
-        q = -np.stack(np.gradient(self.c,*self.dxs),axis=-1)
+        q = -np.stack(np.gradient(self.c,*self.GD.dxs),axis=-1)
         j = self.J_oe_expr(q)*self.d_fac
         Q,J = self.par_mean(q), self.par_mean(j)
 
@@ -389,7 +388,7 @@ class diff_solver_pbc(diff_solver):
     def F(self,c):
         # calculate energy
         self.update_boundary(c)
-        dqs = -np.stack(np.gradient(c,*self.dxs),axis=-1)
+        dqs = -np.stack(np.gradient(c,*self.GD.dxs),axis=-1)
 
         ##### NumPy #####
         J = self.J_oe_expr(dqs+self.Q)
@@ -400,14 +399,14 @@ class diff_solver_pbc(diff_solver):
     def dF(self,c,dF_dc,mask=None):
         # calculate energy
         self.update_boundary(c)
-        dqs = -np.stack(np.gradient(c,*self.dxs),axis=-1)
+        dqs = -np.stack(np.gradient(c,*self.GD.dxs),axis=-1)
        
         ##### NumPy approach #####
         J = self.J_oe_expr(dqs+self.Q)
         e_density = 0.5*self.e_oe_expr(J,dqs+self.Q)
        
         # calculate force
-        dF_dc[:] = sum([-np.gradient(J[...,i],dx,axis=i) for i,dx in enumerate(self.dxs)])
+        dF_dc[:] = sum([-np.gradient(J[...,i],dx,axis=i) for i,dx in enumerate(self.GD.dxs)])
 
         # here we apply boundary condition
         self.update_boundary(dF_dc)
@@ -422,7 +421,7 @@ class diff_solver_pbc(diff_solver):
 
         # macro Q and J
         self.update_boundary(self.c)
-        dq = -np.stack(np.gradient(self.c,*self.dxs),axis=-1)
+        dq = -np.stack(np.gradient(self.c,*self.GD.dxs),axis=-1)
         j = self.J_oe_expr(dq+self.Q)*self.d_fac
         J = self.par_mean(j)
 
@@ -461,7 +460,6 @@ def read_diffsolver_args(path='.'):
 def read_diffsolver_data(path='.',prefix='data',frame=-1):
     # read in dictionary object
     dct = read_diffsolver_args(path)
-    Ns = [len(X) for X in dct['Xs']]
 
     data_path = os.path.join(path,prefix)
     
@@ -480,7 +478,7 @@ def read_diffsolver_data(path='.',prefix='data',frame=-1):
     
     buff = open(os.path.join(data_path,f'c.{count}'),'rb').read()
     C_stream = np.frombuffer(buff,dtype=np.uint8)
-    C = C_stream.view(dtype=np.double).reshape(Ns,order='F')
+    C = C_stream.view(dtype=np.double).reshape(dct['GD'].ns,order='F')
 
 
     return dct, C
@@ -497,8 +495,8 @@ def read_diffsolver(path='.',prefix='data',frame=-1):
 
     # calculate current
     calc.distribute(calc.c,c)
-    q = -np.stack(np.gradient(calc.c,*calc.dxs),axis=-1)
-    ii = 'abc'[:calc.ndim]
+    q = -np.stack(np.gradient(calc.c,*calc.GD.dxs),axis=-1)
+    ii = 'abc'[:calc.GD.ndim]
     j = np.einsum(f'{ii}ij,{ii}j->{ii}i',calc.d,q)
 
     return calc, c, q[calc.ind], j[calc.ind]
@@ -544,7 +542,7 @@ def write_d_eff_inputs(path,D,grid,compressed=True,**kwargs):
         C = macro_C0(grid,Q)
 
         # input dict
-        input_dct = {'Xs':grid.xs}
+        input_dct = {'GD':grid}
         input_dct.update(kwargs)
 
         # write inputs
@@ -608,12 +606,12 @@ def calculate_D(paths=['Q_0','Q_1','Q_2'],prefixes='data',output='D_eff.json'):
             calc.distribute(calc.c,C)
             
             #- calculate q & j
-            q = -np.stack(np.gradient(calc.c,*calc.dxs),axis=-1)
+            q = -np.stack(np.gradient(calc.c,*calc.GD.dxs),axis=-1)
             j = np.einsum(f'...ij,...j->...i',calc.d,q)
             q,j = q[calc.ind], j[calc.ind]
             
             #- take average 
-            axes = tuple(range(calc.ndim))
+            axes = tuple(range(calc.GD.ndim))
             J,Q = j.mean(axis=axes), q.mean(axis=axes)
     
         Js += [J]

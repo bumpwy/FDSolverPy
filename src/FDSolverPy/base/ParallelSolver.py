@@ -11,24 +11,20 @@ from math import fsum
 import mpmath as mp
 
 class parallel_solver():
-    def __init__(self,Xs,ghost=1,pbc=0,partition=None):
+    def __init__(self,GD,ghost=1,pbc=0,partition=None):
 
         ########## global grid ##########
-        # Grid size
-        self.Ns = [len(x) for x in Xs]
-        self.Xs = Xs
-        self.dxs = [x[1]-x[0] for x in Xs]
-        self.ndim = len(Xs)
+        self.GD = GD
         try:
             iter(pbc)
             self.pbc = pbc
         except:
-            self.pbc = [pbc]*self.ndim
+            self.pbc = [pbc]*GD.ndim
         
         ########## local grid ##########
         # domain decomposition
         self.comm,self.partition,self.rank_coord,\
-            self.neighbors, self.ns_list, self.disps_list = domain_decomposition(MPI.COMM_WORLD,self.Ns,self.pbc,partition)
+            self.neighbors, self.ns_list, self.disps_list = domain_decomposition(MPI.COMM_WORLD,GD.ns,self.pbc,partition)
         self.rank,self.comm_size = self.comm.rank, self.comm.size
 
         # local grid
@@ -36,7 +32,7 @@ class parallel_solver():
         self.ns = [n[coord] for n,coord in zip(self.ns_list,self.rank_coord)]
         self.disps = [disp[coord] for disp, coord in zip(self.disps_list,self.rank_coord)]
         self.nes,self.xs,ind = [],[],[]
-        for i in range(self.ndim):
+        for i in range(self.GD.ndim):
             # determine whether to add ghost region
             start,end = 1,1
             if (not self.pbc[i]) and (self.neighbors[i][0]<0): start = 0
@@ -46,11 +42,11 @@ class parallel_solver():
             self.nes += [self.ns[i]+(start+end)*ghost]
             start_ind, end_ind = self.disps[i]-start*ghost,\
                                  self.disps[i]-start*ghost+self.nes[i]
-            if end_ind >= self.Ns[i]:
-                ii = np.r_[start_ind:self.Ns[i],0:(end_ind-self.Ns[i])]
+            if end_ind >= self.GD.ns[i]:
+                ii = np.r_[start_ind:self.GD.ns[i],0:(end_ind-self.GD.ns[i])]
             else:
                 ii = np.r_[start_ind:end_ind]
-            self.xs += [Xs[i][ii]]
+            self.xs += [GD.xs[i][ii]]
             ind += [np.s_[start*ghost:self.nes[i]-end*ghost]]
 
         self.ind = tuple(ind) 
@@ -59,7 +55,7 @@ class parallel_solver():
 
         # senf/recv buffers for mpi communication, in x, y, z directions 
         self.send_buff, self.recv_buff = [], []
-        for i in range(self.ndim):
+        for i in range(self.GD.ndim):
             nes_swap = self.nes.copy()
             nes_swap[i] = nes_swap[0]
             nes_swap[0] = self.ghost
@@ -68,7 +64,7 @@ class parallel_solver():
 
         ########## output status ##########
         self.parprint("Running on %i cores"%self.comm.size)
-        self.parprint("Domain decomposition"+'x'.join(map(str,self.partition)))
+        self.parprint("Domain decomposition"+'x'.join(map(str,self.partition))+'\n')
     def set_variables(self,varnames,dat,dat_bc,dat_type):
         # setup data pointers
         self.n_var, self.varnames = len(varnames), varnames
@@ -109,26 +105,26 @@ class parallel_solver():
         A=np.ravel(self.comm.allgather(fsum(a.ravel())))
         return fsum(A)
     def par_mean(self,x):
-        rank = len(x.shape) - self.ndim
-        x_mean = np.zeros(x.shape[self.ndim:])
-        size = np.prod(self.Ns)
-        for i,index in enumerate(np.ndindex(tuple([self.ndim]*rank))):
+        rank = len(x.shape) - self.GD.ndim
+        x_mean = np.zeros(x.shape[self.GD.ndim:])
+        size = np.prod(self.GD.ns)
+        for i,index in enumerate(np.ndindex(tuple([self.GD.ndim]*rank))):
             x_mean[index] = self.par_sum(x[self.ind+index])/size
 
         return x_mean
 
     def update_boundary(self,dat,*argv):
-        dim = len(dat.shape)-self.ndim
+        dim = len(dat.shape)-self.GD.ndim
         if dim==0:
             #if len(argv)>0:
             #    self.set_boundary(dat,*argv[0])
             self._update_boundary(dat)
         else:
             grid = (np.s_[...],)
-            for i,index in enumerate(np.ndindex(tuple([self.ndim]*dim))):
+            for i,index in enumerate(np.ndindex(tuple([self.GD.ndim]*dim))):
                 self._update_boundary(dat[grid+index])
     def _update_boundary(self,dat):
-        for i in range(self.ndim):
+        for i in range(self.GD.ndim):
             self.reqs = []
             dat_swap = np.swapaxes(dat,i,0)
             # fill in boundary values to send
@@ -161,15 +157,15 @@ class parallel_solver():
     
     def distribute(self,var,Dat):
         if self.comm_size>1:
-            dat_rank_inds = tuple(var.shape[self.ndim:])
+            dat_rank_inds = tuple(var.shape[self.GD.ndim:])
             # Master process: partition Dat and send out to each processor
             if self.rank==0:
                 send_reqs = []
                 for p in range(1,self.comm.size):
                     # obtain rank-p's coordinate, size, and displacement
                     coord = self.comm.Get_coords(p)
-                    ns_p = [self.ns_list[i][coord[i]] for i in range(self.ndim)]
-                    disps_p = [self.disps_list[i][coord[i]] for i in range(self.ndim)]
+                    ns_p = [self.ns_list[i][coord[i]] for i in range(self.GD.ndim)]
+                    disps_p = [self.disps_list[i][coord[i]] for i in range(self.GD.ndim)]
     
                     # populate send-buffer 
                     sendbuf = np.empty(tuple(ns_p)+dat_rank_inds,dtype=var.dtype,order='F')
@@ -276,7 +272,7 @@ class parallel_solver():
         
         # derived array data type for MPI-IO. defines pointer to the sub-block of array for each processor
         self.dat_mpi_arraytype = \
-            [d_type.Create_subarray(self.Ns,self.ns,self.disps,order=MPI.ORDER_F) for d_type in self.dat_type]
+            [d_type.Create_subarray(self.GD.ns,self.ns,self.disps,order=MPI.ORDER_F) for d_type in self.dat_type]
         [a_type.Commit() for a_type in self.dat_mpi_arraytype]
 
         # open MPI I/O file handle

@@ -29,8 +29,11 @@ def draw_cuboid(XXs,scalar,fig=None,ax=None,plotter='mayavi',cmap=None,**kwargs)
             elif plotter=='matplotlib':
                 my_col = cmap_func((scalar[inds]-smin)/(smax-smin))
                 plots += [ax.plot_surface(*grids,facecolors=my_col,edgecolor='none',**kwargs)]
-    if plotter=='mayavi': return plots
-    elif plotter=='matplotlib': return ax, plots
+    if plotter=='mayavi': 
+        return plots
+    elif plotter=='matplotlib': 
+        ax.set_box_aspect((np.ptp(XXs[0]), np.ptp(XXs[1]), np.ptp(XXs[2])))
+        return ax, plots
     
 def plot_Dij(Ds,ax,args={}):
     i_flat = range(9)
