@@ -1,30 +1,11 @@
 import numpy as np
+from scipy.constants import physical_constants
 import subprocess
 import itertools as it
 import more_itertools as mit
 
-def read_file(fname):
-    dat = np.fromfile(fname,sep=' ')
-    phi = dat[3::4]
-    n = round(len(phi)**(1/3))
-    phi = phi.reshape((n,n,n))
-    return phi
+kB = physical_constants['Boltzmann constant in eV/K'][0]
 
-def set_diffusivity(phi,Db,Dgb):
-    return phi*Db + (1-phi)*Dgb
-
-def read_microstruct(header):
-    
-    # info file
-    lines = open(f'{header}.info').read().strip().split('\n')
-    ns = [int(x) for x in lines[0].split()[1::2]]
-    
-    # microstructure file
-    d = np.array(open(f'{header}.in','rt').read().strip().split('\n')).astype(float)
-    nq = int(d.size/ns[0]/ns[1]/ns[2])
-    zetas = d.reshape((nq,*ns),order='F')
-
-    return zetas
 
 # read diffusivity parameter file
 def read_block(f,before_block,in_block):
@@ -53,7 +34,6 @@ def calc_diffusivity(fname,T):
     return Db, Dgb
 def calc_diffusivity_hti(T):
     # temperature
-    kB = 8.617333262E-5
     kT = kB*T
     
     # equilibrium occupancies
@@ -63,21 +43,39 @@ def calc_diffusivity_hti(T):
 
     # transition rates
     v = 4E13
+    # bulk
     e_oo, e_tt, e_ot, e_to =  0.69, 10, 0.49, 0.39  # e_tt is just a big number
     l_oo, l_tt = v*np.exp(-e_oo/kT), v*np.exp(-e_tt/kT)
     l_ot, l_to = v*np.exp(-e_ot/kT), v*np.exp(-e_to/kT)
+    # surface
+    e_f, e_h = 0, 0.03
+    Z_s = np.exp(-e_f/kT) + np.exp(-e_h/kT)
+    r_f = np.exp(-e_f/kT)/Z_s
+    e_fh = 0.24
+    l_fh = v*np.exp(-e_fh/kT)
 
     # diffusivity tensor
-    #a,c = 2.933, 4.638
-    a,c = 2.933, 4.638/2
+    a,c = 2.933/1e8, 4.638/1e8  # in cm units
     Db = (4*r_t*l_to/2) * a**2
-    Dc = (2*r_o*l_oo/4 + 4*r_t*(3*l_to*l_tt)/(24*l_to+16*l_tt)) * c**2
+    Dc = (2*r_o*l_oo/4 + 4*r_t*(3*l_to*l_tt)/(24*l_to+16*l_tt)) * (c/2)**2
+    Dgb = 3 * (a/np.sqrt(3))**2 * r_f * l_fh
 
     return np.array([[Db,0,0],\
                      [0,Db,0],\
-                     [0,0,Dc]])
+                     [0,0,Dc]]),\
+           np.array([[Dgb,0,0],\
+                     [0,Dgb,0],\
+                     [0,0,Dgb]])
 
+def calc_diffusivity_SrGDC(T):
+    D0_b, D0_gb, D0_surf = [8.9]*3
+    E_b, E_gb, E_surf = 6.23, 4.83, 2.9
 
-
+    D_b, D_gb, D_surf = D0_b * np.exp(-E_b/kT),\
+                        D_gb * np.exp(-E_gb/kT),\
+                        D_surf * np.exp(-E_surf/kT)
+    return np.diag([D_b]*3),\
+           np.diag([D_gb]*3),\
+           np.diag([D_surf]*3)
 
 
