@@ -75,8 +75,8 @@ def calc_diffusivity_SrGDC(T):
     E_b, E_gb, E_surf = 6.23, 4.83, 2.9
 
     D_b, D_gb, D_surf = D0_b * np.exp(-E_b/kT),\
-                        D_gb * np.exp(-E_gb/kT),\
-                        D_surf * np.exp(-E_surf/kT)
+                        D0_gb * np.exp(-E_gb/kT),\
+                        D0_surf * np.exp(-E_surf/kT)
     return np.diag([D_b]*3),\
            np.diag([D_gb]*3),\
            np.diag([D_surf]*3)
