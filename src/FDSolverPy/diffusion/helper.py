@@ -68,6 +68,9 @@ def calc_diffusivity_hti(T):
                      [0,0,Dgb]])
 
 def calc_diffusivity_SrGDC(T):
+    # temperature
+    kT = kB*T
+    
     D0_b, D0_gb, D0_surf = [8.9]*3
     E_b, E_gb, E_surf = 6.23, 4.83, 2.9
 
