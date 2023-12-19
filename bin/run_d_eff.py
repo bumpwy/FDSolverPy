@@ -50,14 +50,22 @@ for Qf in Qfs:
         calc = diff_solver_pbc(**read_diffsolver_args())
     else:
         calc = diff_solver(**read_diffsolver_args())
-
+    
     # normalize parameters for numerical precision?
     if normalize:
         d_mean, F_max = normalize_parameters(calc)
         run_args['ftol'] = ftol*F_max
+    
+    # if restarting, check if etol, ftol are met
+    if run_args['restart']:
+        output_vars = json.load(open('data/macro_vars.json','r'))
+        if output_vars['etol_current']<=run_args['etol'] and\
+            output_vars['ftol_current']<=run_args['ftol']:
+            continue
 
     # run calculation
     calc.run(**run_args)
     os.chdir(cwd)
+
 if calc.rank==0:
     calculate_D(Qfs)

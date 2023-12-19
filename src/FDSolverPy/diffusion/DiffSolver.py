@@ -86,14 +86,14 @@ class diff_solver(parallel_solver):
             self.dump(outdir,counter,clean_old) # store initial frame if it's a fresh start
 
         # print run parameters
-        self.parprint('run parameters\n')
+        self.parprint('RUN PARAMETERS:\n')
         if restart:
-            self.parprint('restart calculation\n')
+            self.parprint('    restart calculation\n')
         else:
-            self.parprint('start from scratch\n')
-        self.parprint(f'etol: {etol:.4e}  ftol: {ftol:.4e}\n')
-        self.parprint(f'line search args: {ls_args}\n')
-        self.parprint(f'Nstep: {Nstep}  step: {step}  clean_old: {clean_old}\n')
+            self.parprint('    start from scratch\n')
+        self.parprint(f'    etol: {etol:.4e}  ftol: {ftol:.4e}\n')
+        self.parprint(f'    line search args: {ls_args}\n')
+        self.parprint(f'    Nstep: {Nstep}  step: {step}  clean_old: {clean_old}\n')
         ########## Optimization Setup ##########
         #self.str_to_alg(alg)
         hh,g0,g1 = [np.zeros_like(self.c) for i in range(3)]
@@ -136,6 +136,7 @@ class diff_solver(parallel_solver):
                                   ('%.4e'%Err).ljust(20),\
                                   str(datetime.now()-t1).ljust(15)))
         # final output
+        self.parprint('-'*70)
         self.dump_macro_vars(outdir,\
                              etol_target=etol,etol_current=DF,\
                              ftol_target=ftol,ftol_current=Err,\
@@ -448,7 +449,7 @@ def normalize_parameters(calc):
     calc.d_fac = d_mean
     _,F_max = calc.dF(calc.c,np.zeros_like(calc.c))
 
-    calc.parprint(f'normalized diffusivity d by {d_mean}, with F_max:{F_max}')
+    calc.parprint(f'normalized diffusivity d by {d_mean}, with F_max:{F_max}\n')
 
     return d_mean, F_max
 
@@ -548,6 +549,32 @@ def write_d_eff_inputs(path,D,grid,compressed=True,**kwargs):
         # write inputs
         sub_path = os.path.join(path,f'Q_{i}')  # sub_path
         write_inputs(sub_path,input_dct,C,D,compressed)
+
+def check_d_eff_outputs(path,ftol=None,etol=None):
+    q_paths = sorted(glob.glob(os.path.join(path,'Q_*')),key=lambda x: int(x.split('_')[-1]))
+    N = len(q_paths)
+    completion = 0
+    etol_currents, ftol_currents = [], []
+    
+    for q_path in q_paths:
+        out_file = os.path.join(q_path,'data/macro_vars.json')
+        if not os.path.isfile(out_file):
+            continue
+        output_vars = json.load(open(out_file,'r'))
+        if etol is None:
+            etol = output_vars['etol_target']
+        if ftol is None:
+            ftol = output_vars['ftol_target']
+
+        if output_vars['etol_current']<=etol and \
+            output_vars['ftol_current']<=ftol:
+            completion += 1
+        etol_currents.append(output_vars['etol_current'])
+        ftol_currents.append(output_vars['ftol_current'])
+
+    return {'N':N,'completion':completion,\
+            'etol':etol,'etol_currents':etol_currents,\
+            'ftol':ftol,'ftol_currents':ftol_currents}
     
 
 # create the initial concentration field according to Q-vector
