@@ -358,8 +358,11 @@ class diff_solver(parallel_solver):
 
         # D_par and D_ser
         D_par = self.par_mean(self.d)*self.d_fac
-        d_inv = np.linalg.inv(self.d)
-        D_ser = np.linalg.inv(self.par_mean(d_inv))*self.d_fac
+        try:
+            d_inv = np.linalg.inv(self.d)
+            D_ser = np.linalg.inv(self.par_mean(d_inv))*self.d_fac
+        except np.linalg.LinAlgError:
+            D_ser = np.zeros((self.GD.ndim,self.GD.ndim))
 
         # storage
         if self.rank==0:
