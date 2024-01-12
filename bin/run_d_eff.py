@@ -2,6 +2,8 @@
 import json, sys
 from argparse import ArgumentParser
 from FDSolverPy.diffusion.DiffSolver import *
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
 
 parser = ArgumentParser(usage='usage: run calculation for effective diffusivity with user supplied options')
 parser.add_argument('-e','--etol',dest='etol',default=1e-5,type=float,\
@@ -40,9 +42,12 @@ pbc = run_args['pbc']
 del run_args['normalize'], run_args['dimension'], run_args['pbc']
 
 cwd = os.getcwd()
+if rank==0:
+    print(cwd)
 Qfs = [f'Q_{i}' for i in range(dim)]
 for Qf in Qfs:
     os.chdir(Qf)
+    run = True
     
     # initialize calculators
     dat = read_diffsolver_args()
@@ -54,17 +59,22 @@ for Qf in Qfs:
     # normalize parameters for numerical precision?
     if normalize:
         d_mean, F_max = normalize_parameters(calc)
-        run_args['ftol'] = ftol*F_max
+        #run_args['ftol'] = ftol*F_max
     
     # if restarting, check if etol, ftol are met
     if run_args['restart']:
-        output_vars = json.load(open('data/macro_vars.json','r'))
-        if output_vars['etol_current']<=run_args['etol'] and\
-            output_vars['ftol_current']<=run_args['ftol']:
-            continue
+        # check if macro_vars.json file exists.
+        # Should exist if properly finished previous run
+        macro_vars_file = 'data/macro_vars.json'
+        if os.path.isfile(macro_vars_file):
+            output_vars = json.load(open(macro_vars_file,'r'))
+            if output_vars['etol_current']<=run_args['etol'] and\
+                output_vars['ftol_current']<=run_args['ftol']:
+                calc.parprint(f'current ftol={output_vars["ftol_current"]}, while ftol_target={run_args["ftol"]}')
+                run = False
 
     # run calculation
-    calc.run(**run_args)
+    if run: calc.run(**run_args)
     os.chdir(cwd)
 
 if calc.rank==0:

@@ -100,6 +100,9 @@ class parallel_solver():
             i,j = pos[0],pos[1]
         n,m = np.digitize(i,self.disps_n)-1,np.digitize(j,self.disps_m)-1
         return self.comm.Get_cart_rank([n,m])
+    def par_prod(self,a):
+        prods = np.ravel(self.comm.allgather(np.prod(a.ravel())))
+        return np.prod(prods)
     def par_sum(self,a):
         #### somewhat fast, quite accurate ####
         A=np.ravel(self.comm.allgather(fsum(a.ravel())))

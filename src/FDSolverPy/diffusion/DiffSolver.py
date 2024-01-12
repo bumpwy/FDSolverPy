@@ -358,10 +358,12 @@ class diff_solver(parallel_solver):
 
         # D_par and D_ser
         D_par = self.par_mean(self.d)*self.d_fac
-        try:
+        det_d = np.linalg.det(self.d)
+        not_singular = self.par_prod(det_d)
+        if not_singular:
             d_inv = np.linalg.inv(self.d)
             D_ser = np.linalg.inv(self.par_mean(d_inv))*self.d_fac
-        except np.linalg.LinAlgError:
+        else:
             D_ser = np.zeros((self.GD.ndim,self.GD.ndim))
 
         # storage
@@ -557,6 +559,7 @@ def check_d_eff_outputs(path,ftol=None,etol=None):
     q_paths = sorted(glob.glob(os.path.join(path,'Q_*')),key=lambda x: int(x.split('_')[-1]))
     N = len(q_paths)
     completion = 0
+    etol_targets, ftol_targets = [], []
     etol_currents, ftol_currents = [], []
     
     for q_path in q_paths:
@@ -565,19 +568,21 @@ def check_d_eff_outputs(path,ftol=None,etol=None):
             continue
         output_vars = json.load(open(out_file,'r'))
         if etol is None:
-            etol = output_vars['etol_target']
+            etol_target = output_vars['etol_target']
         if ftol is None:
-            ftol = output_vars['ftol_target']
+            ftol_target = output_vars['ftol_target']
 
-        if output_vars['etol_current']<=etol and \
-            output_vars['ftol_current']<=ftol:
+        if output_vars['etol_current']<=etol_target and \
+            output_vars['ftol_current']<=ftol_target:
             completion += 1
+        etol_targets.append(etol_target)
+        ftol_targets.append(ftol_target)
         etol_currents.append(output_vars['etol_current'])
         ftol_currents.append(output_vars['ftol_current'])
 
     return {'N':N,'completion':completion,\
-            'etol':etol,'etol_currents':etol_currents,\
-            'ftol':ftol,'ftol_currents':ftol_currents}
+            'etol_targets':etol_targets,'etol_currents':etol_currents,\
+            'ftol_targets':ftol_targets,'ftol_currents':ftol_currents}
     
 
 # create the initial concentration field according to Q-vector

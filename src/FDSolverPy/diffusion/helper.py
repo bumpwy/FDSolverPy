@@ -27,11 +27,17 @@ def read_diff(fname):
             if pf.peek('eof')=='eof': break
     return dat
 def calc_diffusivity(fname,T):
-    kB = 8.617333262E-5
+    kT = kB*T
     dat = read_diff(fname)
-    Db = dat['bulk_D0']*np.exp(-dat['bulk_Ea']/kB/T)     
-    Dgb = dat['gb_D0']*np.exp(-dat['gb_Ea']/kB/T)     
-    return Db, Dgb
+
+    phases = set([x.split('_')[-1] for x in dat.keys()])
+    D = {}
+    for phase in phases:
+        D0,Ea = dat[f'D0_{phase}'],dat[f'Ea_{phase}']
+        D[phase] = D0*np.exp(-Ea/kT)
+
+    return D
+
 def calc_diffusivity_hti(T):
     # temperature
     kT = kB*T
