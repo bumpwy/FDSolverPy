@@ -19,9 +19,13 @@ parser.add_argument('-l','--ls_args',dest='ls_args',default='{"t0":1e-2,"tol":1e
                         trial step size t0 and tolerance tol, default: %(default)s')
 parser.add_argument('-r','--restart',dest='restart',default=False,action='store_true',\
                   help='whether or not restarting from previous run, default=%(default)')
+parser.add_argument('-check_convergence',dest='check_convergence',default=False,action='store_true',\
+                  help='whether or not check convergence of previous run, default=%(default)')
 parser.add_argument('-nn','--normalize',dest='normalize',default=True,action='store_true',\
                     help='whether or not normalize diffusivity for \
                           better numerical precision. This will change ftol --> ftol*F_max. default=%(default)s')
+parser.add_argument('--nn_value',dest='nn_value',default=0,type=float,\
+                    help='user provided normalization value, default: %{default}.2e')
 parser.add_argument('-dim','--dimension',dest='dimension',default=3,type=int,\
                     help='the dimension of the problem e.g. 1-, 2-, or 3-d. default=%(default)s' )
 parser.add_argument('-pbc','--pbc',dest='pbc',default=False,action='store_true')
@@ -36,10 +40,13 @@ if len(sys.argv)==100:
 # setup arguments 
 run_args = vars(parser.parse_args())
 normalize = run_args['normalize']
+nn_value = run_args['nn_value']
+if nn_value==0: nn_value=None
 dim = run_args['dimension']
 ftol = run_args['ftol']
 pbc = run_args['pbc']
-del run_args['normalize'], run_args['dimension'], run_args['pbc']
+check_convergence = run_args['check_convergence']
+del run_args['normalize'], run_args['nn_value'], run_args['check_convergence'],run_args['dimension'], run_args['pbc']
 
 cwd = os.getcwd()
 if rank==0:
@@ -55,14 +62,15 @@ for Qf in Qfs:
         calc = diff_solver_pbc(**read_diffsolver_args())
     else:
         calc = diff_solver(**read_diffsolver_args())
+    calc.parprint('calculator built')
     
     # normalize parameters for numerical precision?
     if normalize:
-        d_mean, F_max = normalize_parameters(calc)
+        d_mean, F_max = normalize_parameters(calc,nn_value)
         #run_args['ftol'] = ftol*F_max
     
-    # if restarting, check if etol, ftol are met
-    if run_args['restart']:
+    # if check_convergence==True, check if etol, ftol are met
+    if check_convergence:
         # check if macro_vars.json file exists.
         # Should exist if properly finished previous run
         macro_vars_file = 'data/macro_vars.json'

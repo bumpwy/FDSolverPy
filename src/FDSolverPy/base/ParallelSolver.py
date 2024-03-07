@@ -159,43 +159,43 @@ class parallel_solver():
             #self.update_boundary(self.dat[i],self.dat_bc[i])
     
     def distribute(self,var,Dat):
-        if self.comm_size>1:
-            dat_rank_inds = tuple(var.shape[self.GD.ndim:])
-            # Master process: partition Dat and send out to each processor
-            if self.rank==0:
-                send_reqs = []
-                for p in range(1,self.comm.size):
-                    # obtain rank-p's coordinate, size, and displacement
-                    coord = self.comm.Get_coords(p)
-                    ns_p = [self.ns_list[i][coord[i]] for i in range(self.GD.ndim)]
-                    disps_p = [self.disps_list[i][coord[i]] for i in range(self.GD.ndim)]
-    
-                    # populate send-buffer 
-                    sendbuf = np.empty(tuple(ns_p)+dat_rank_inds,dtype=var.dtype,order='F')
-                    sendbuf[:] = Dat[tuple([np.s_[disp_p:disp_p+n_p] \
-                                            for disp_p,n_p in zip(disps_p,ns_p)]+[np.s_[...]])]
-                    # send to Worker-p (rank-p)
-                    send_reqs += [self.comm.Isend(sendbuf,dest=p,tag=p)]
-                MPI.Request.Waitall(send_reqs)
-                # create Master's recv-buffer (an artificial one of course...)
-                recvbuf = \
-                        Dat[tuple([np.s_[disp:disp+n] for disp,n in zip(self.disps,self.ns)]+[np.s_[...]])]
-            else:
-                # create Worker's receive-buffer and receive from Master
-                recvbuf = np.empty(tuple(self.ns)+dat_rank_inds,dtype=var.dtype,order='F')
-                recv_req = self.comm.Irecv(recvbuf,source=0,tag=self.rank)
-                MPI.Request.Wait(recv_req)
-        else:
-            recvbuf = Dat
-        
-        # populate everybody's var-array from recvbuf
-        var[self.ind+(np.s_[...],)] = recvbuf
+#        if self.comm_size>1:
+#            dat_rank_inds = tuple(var.shape[self.GD.ndim:])
+#            # Master process: partition Dat and send out to each processor
+#            if self.rank==0:
+#                send_reqs = []
+#                for p in range(1,self.comm.size):
+#                    # obtain rank-p's coordinate, size, and displacement
+#                    coord = self.comm.Get_coords(p)
+#                    ns_p = [self.ns_list[i][coord[i]] for i in range(self.GD.ndim)]
+#                    disps_p = [self.disps_list[i][coord[i]] for i in range(self.GD.ndim)]
+#    
+#                    # populate send-buffer 
+#                    sendbuf = np.empty(tuple(ns_p)+dat_rank_inds,dtype=var.dtype,order='F')
+#                    sendbuf[:] = Dat[tuple([np.s_[disp_p:disp_p+n_p] \
+#                                            for disp_p,n_p in zip(disps_p,ns_p)]+[np.s_[...]])]
+#                    # send to Worker-p (rank-p)
+#                    send_reqs += [self.comm.Isend(sendbuf,dest=p,tag=p)]
+#                MPI.Request.Waitall(send_reqs)
+#                # create Master's recv-buffer (an artificial one of course...)
+#                recvbuf = \
+#                        Dat[tuple([np.s_[disp:disp+n] for disp,n in zip(self.disps,self.ns)]+[np.s_[...]])]
+#            else:
+#                # create Worker's receive-buffer and receive from Master
+#                recvbuf = np.empty(tuple(self.ns)+dat_rank_inds,dtype=var.dtype,order='F')
+#                recv_req = self.comm.Irecv(recvbuf,source=0,tag=self.rank)
+#                MPI.Request.Wait(recv_req)
+#        else:
+#            recvbuf = Dat
+#        
+#        # populate everybody's var-array from recvbuf
+#        var[self.ind+(np.s_[...],)] = recvbuf
+#        self.update_boundary(var)
+
+
+        var[self.ind+(np.s_[...],)] =\
+                Dat[tuple([np.s_[disp:disp+n] for disp,n in zip(self.disps,self.ns)]+[np.s_[...]])]
         self.update_boundary(var)
-
-
-        #var[self.ind+(np.s_[...],)] =\
-        #        Dat[tuple([np.s_[disp:disp+n] for disp,n in zip(self.disps,self.ns)]+[np.s_[...]])]
-        #self.update_boundary(var)
 
     def set_boundary(self,var,Left,Right,Bottom,Top,\
                               LowerLeft,LowerRight,UpperLeft,UpperRight):

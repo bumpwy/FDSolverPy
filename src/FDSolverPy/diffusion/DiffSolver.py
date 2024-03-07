@@ -36,7 +36,7 @@ class diff_solver(parallel_solver):
             C_array = np.load(C)['C']
         else:
             C_array = C
-        
+
         # setup variables
         self.d = np.zeros(tuple(self.nes+[self.GD.ndim,self.GD.ndim]),dtype=D_array.dtype)
         self.d_fac = 1
@@ -357,8 +357,8 @@ class diff_solver(parallel_solver):
         Q,J = self.par_mean(q), self.par_mean(j)
 
         # D_par and D_ser
-        D_par = self.par_mean(self.d)*self.d_fac
-        det_d = np.linalg.det(self.d)
+        D_par = self.par_mean(self.d*self.d_fac)
+        det_d = np.linalg.det(self.d*self.d_fac)
         not_singular = self.par_prod(det_d)
         if not_singular:
             d_inv = np.linalg.inv(self.d)
@@ -445,18 +445,19 @@ class diff_solver_pbc(diff_solver):
 ##### pbc diffsolver class #####
 
 ##### helper functions #####
-def normalize_parameters(calc):
+def normalize_parameters(calc,nn_value):
     # normalize paramters before calculation
     # greatly enhances stability for small d's
     Tr_d = np.diagonal(calc.d[calc.ind],axis1=-2,axis2=-1).mean(axis=-1)
-    d_mean = calc.par_mean(Tr_d)
-    calc.d/=d_mean
-    calc.d_fac = d_mean
+    if nn_value is None:
+        nn_value = calc.par_mean(Tr_d)
+    calc.d/=nn_value
+    calc.d_fac = nn_value
     _,F_max = calc.dF(calc.c,np.zeros_like(calc.c))
 
-    calc.parprint(f'normalized diffusivity d by {d_mean}, with F_max:{F_max}\n')
+    calc.parprint(f'normalized diffusivity d by {nn_value}, with F_max:{F_max}\n')
 
-    return d_mean, F_max
+    return nn_value, F_max
 
 def read_diffsolver_args(path='.'):
     # read in dictionary object
