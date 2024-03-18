@@ -31,7 +31,8 @@ pip uninstall FDSolverPy
 ```
 
 ## Test run
-Examples can be found in the `./test` directory. For instance, under `./tests/local/2d/microstruct` do 
+Examples can be found in the `./test` directory. 
+For instance, under `./tests/local/2d/microstruct` contains examples for diffusion problem in a microstructure.
 ```bash
 ./run.py
 ```
@@ -41,3 +42,6 @@ and to plot the results do
 ```
 and you shall obtain
 ![alt text](./tests/local/2d/microstruct/results.png)
+
+where $d(\bold{r})$ is the polycrystalline diffusivity, $\Delta c$'s are the perturbative concentration fields for 
+driving force in $Q_0 = (1,0)$ and $Q_1 = (0,1)$ directions.
