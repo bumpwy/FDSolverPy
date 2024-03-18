@@ -8,8 +8,9 @@ Parallelized finite-difference module for solving physics problem.
 The installation time is typically within 5 minutes on a normal local machine.
 
 Dependencies:
-- NumPy
-- mpi4py
+- `numpy`
+- `mpi4py`
+- `matplotlib`
 
 An example for the installation process:
 
@@ -28,3 +29,15 @@ To uninstall:
 ```bash
 pip uninstall FDSolverPy
 ```
+
+## Test run
+Examples can be found in the `./test` directory. For instance, under `./tests/local/2d/microstruct` do 
+```bash
+./run.py
+```
+and to plot the results do
+```
+./plot.py
+```
+and you shall obtain
+![alt text](./tests/local/2d/microstruct/results.png)

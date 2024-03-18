@@ -16,13 +16,20 @@ for i in range(2):
     F,err = calc.dF(calc.c,dF_dc)
     print(err,dF_dc.shape)
 
+    # processing
+    Q = q.mean(axis=(0,1))
+    C0 = macro_C0(calc.GD,Q)
+    del_c = c-C0
+
     # plotting
-    axs[i+1].imshow(c.T,origin='lower',cmap='Blues')
-    axs[i+1].set_title(f'C-{i}',fontsize=18)
+    axs[i+1].imshow(del_c.T,origin='lower',cmap='Blues')
+    axs[i+1].set_title(rf'$\Delta c$-{i}',fontsize=18)
 
 # plot diffusivity
 axs[0].imshow(calc.d[...,0,0].T,origin='lower')
 axs[0].set_title(r'd($\bf{r}$)',fontsize=18)
+
+plt.savefig('results.png')
 
 plt.show()
 

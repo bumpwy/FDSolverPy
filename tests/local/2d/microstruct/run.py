@@ -23,7 +23,7 @@ Cs = [macro_C0(gd,Q) for Q in Qs]
 cwd = os.getcwd()
 for i,C in enumerate(Cs):
     # write inputs
-    write_inputs(f'Q_{i}',{'Xs':gd.xs},C,d)
+    write_inputs(f'Q_{i}',{'GD':gd},C,d)
 
     # initialize calculator
     os.chdir(f'Q_{i}')

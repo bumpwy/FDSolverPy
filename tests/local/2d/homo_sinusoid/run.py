@@ -22,7 +22,7 @@ Cs = [np.cos(Q[0]*np.pi*gd.xxs[0])*np.cos(Q[1]*np.pi*gd.xxs[1]) for Q in Qs]
 cwd = os.getcwd()
 for i,C in enumerate(Cs):
     # write inputs
-    write_inputs(f'Q_{i}',{'Xs':gd.xs,'ghost':2},C,d)
+    write_inputs(f'Q_{i}',{'GD':gd,'ghost':2},C,d)
 
     # initialize calculator
     os.chdir(f'Q_{i}')

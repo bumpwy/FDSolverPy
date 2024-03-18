@@ -280,7 +280,6 @@ class diff_solver(parallel_solver):
                     Fw = Fu
                 elif (Fu <= Fv) or v==o or v==w:
                     v, Fv = u, Fu
-        self.parprint('reached maxiter')
         return o
 
     ##### energy & force #####
@@ -445,7 +444,7 @@ class diff_solver_pbc(diff_solver):
 ##### pbc diffsolver class #####
 
 ##### helper functions #####
-def normalize_parameters(calc,nn_value):
+def normalize_parameters(calc,nn_value=None):
     # normalize paramters before calculation
     # greatly enhances stability for small d's
     Tr_d = np.diagonal(calc.d[calc.ind],axis1=-2,axis2=-1).mean(axis=-1)
