@@ -53,8 +53,8 @@ class diff_solver(parallel_solver):
         ndim_indices = 'abc'
         ndim_index = ndim_indices[:self.GD.ndim]
         ops = self.d,tuple(self.nes+[self.GD.ndim])
-        self.J_oe_expr = oe.contract_expression(f'{ndim_index}ij,{ndim_index}j->{ndim_index}i', *ops, constants=[0])
-        self.e_oe_expr = oe.contract_expression(f'{ndim_index}i,{ndim_index}i->{ndim_index}',\
+        self.J_oe_expr = oe.contract_expression(f'...ij,...j->...i', *ops, constants=[0])
+        self.e_oe_expr = oe.contract_expression(f'...i,...i->...',\
                                                 tuple(self.nes+[self.GD.ndim]),\
                                                 tuple(self.nes+[self.GD.ndim]))
 
@@ -312,6 +312,7 @@ class diff_solver(parallel_solver):
         # calculate energy
         self.update_boundary(c)
         gradCs = np.stack(np.gradient(c,*self.GD.dxs),axis=-1)
+        if self.GD.ndim==1: gradCs = np.expand_dims(gradCs,1)
 
         ##### NumPy #####
         J = self.J_oe_expr(-gradCs)
@@ -323,6 +324,7 @@ class diff_solver(parallel_solver):
         # calculate energy
         self.update_boundary(c)
         gradCs = np.stack(np.gradient(c,*self.GD.dxs),axis=-1)
+        if self.GD.ndim==1: gradCs = np.expand_dims(gradCs,1)
        
         ##### NumPy approach #####
         J = self.J_oe_expr(-gradCs)
@@ -352,6 +354,7 @@ class diff_solver(parallel_solver):
         # macro Q and J
         self.update_boundary(self.c)
         q = -np.stack(np.gradient(self.c,*self.GD.dxs),axis=-1)
+        if self.GD.ndim==1: q = np.expand_dims(q,axis=1)
         j = self.J_oe_expr(q)*self.d_fac
         Q,J = self.par_mean(q), self.par_mean(j)
 
@@ -376,7 +379,7 @@ class diff_solver(parallel_solver):
 class diff_solver_pbc(diff_solver):
     def __init__(self,
                  # inputs for grid
-                 Xs,ghost=2,
+                 GD,ghost=2,
                  # diffusivity
                  D='D.npz',Q=[1,0,0],
                  # variable initialization
@@ -384,7 +387,7 @@ class diff_solver_pbc(diff_solver):
                  # extra (mostly for backward compatability)
                  **kwargs):
         # call parent constructor
-        diff_solver.__init__(self,Xs,ghost,pbc=1)
+        diff_solver.__init__(self,GD,ghost,pbc=1,D=D,C=C,Data_Type=Data_Type,**kwargs)
 
         # additional parameters
         self.Q = np.array(Q)
@@ -411,7 +414,7 @@ class diff_solver_pbc(diff_solver):
         e_density = 0.5*self.e_oe_expr(J,dqs+self.Q)
        
         # calculate force
-        dF_dc[:] = sum([-np.gradient(J[...,i],dx,axis=i) for i,dx in enumerate(self.GD.dxs)])
+        dF_dc[:] = sum([np.gradient(J[...,i],dx,axis=i) for i,dx in enumerate(self.GD.dxs)])
 
         # here we apply boundary condition
         self.update_boundary(dF_dc)
@@ -438,7 +441,7 @@ class diff_solver_pbc(diff_solver):
         # storage
         if self.rank==0:
             fname = os.path.join(outdir,'macro_vars.json')
-            kwargs.update({'Q':Q.tolist(),'J':J.tolist(),'D_par':D_par.tolist(),'D_ser':D_ser.tolist()})
+            kwargs.update({'Q':self.Q.tolist(),'J':J.tolist(),'D_par':D_par.tolist(),'D_ser':D_ser.tolist()})
             json.dump(kwargs,
                       open(fname,'w'),indent=4)
 ##### pbc diffsolver class #####
@@ -502,8 +505,8 @@ def read_diffsolver(path='.',prefix='data',frame=-1):
     # calculate current
     calc.distribute(calc.c,c)
     q = -np.stack(np.gradient(calc.c,*calc.GD.dxs),axis=-1)
-    ii = 'abc'[:calc.GD.ndim]
-    j = np.einsum(f'{ii}ij,{ii}j->{ii}i',calc.d,q)
+    if calc.GD.ndim==1: q = np.expand_dims(q,axis=1)
+    j = np.einsum(f'...ij,...j->...i',calc.d,q)
 
     return calc, c, q[calc.ind], j[calc.ind]
 
