@@ -7,7 +7,7 @@ Parallelized finite-difference module for solving physics problem. Here are some
 3. Numerical stability:
    - implemented a parallelized stable & fast `par_sum` function, allowing accurate calculation of loss functions
    - Improved numerical stability against standard `sum` or `np.sum` functions; improved speed against `math.fsum` accurate summation functions.
-   - Capable of optimizing complex loss functions
+   - Reproducibility of results regardless of parallelization setup
 
 
 ## Installation
@@ -60,6 +60,7 @@ As mentioned above, a parallelized stable&fast summation function is implemented
    - In most optimization codes, the loss function (or the "energy functional") are typically calculated with a simple `sum` of all errors, which is known to be numerically unstable, negatively impacting the convergence speed.
    - While more accurate summation functions are available, e.g. `math.fsum`, they only work on a single-process. An alternative is to use `MPI.allgather` to first gather all arrays to one process, and then perform `fsum` to get accurate results. However, this slows down the process significantly.
    - In the `parallel_solver` class, the `par_sum` member function offers a parallelized and stable summation function to calculate the loss function, without sacrificing speed. This allows for extremely accurate calculation of the loss function, and greatly improves convergence speed for optimization.
+   - Another benefit is reproducibility. Standard `sum` functions are not associative due to floating point errors, hence different parallelization setup can lead to different results. Using a numerically stable sum, our tests have shown virtually identical results across different parallelization setups.
    - Implementation details can be found in the `parallel_solver.par_sum` function and also in `math/util.py` (a compensated summation, a.k.a. the Neumaien algorithm, was implemented).
 
 And example is shown below, comparing an optimization problem using standard `np.sum` (blue) and our stable `par_sum` (orange). The standard sum function prevents optimization below $10^{-7}$, while the implemented stable summation allows for arbitrarily low error
