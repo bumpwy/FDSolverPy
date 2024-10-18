@@ -9,6 +9,10 @@ from mpi4py import MPI
 from math import fsum
 #import accupy as ap
 import mpmath as mp
+import functools as ft
+from FDSolverPy.math.util import *
+from decimal import Decimal, getcontext
+getcontext().prec = 40
 
 class parallel_solver():
     def __init__(self,GD,ghost=1,pbc=0,partition=None):
@@ -104,16 +108,36 @@ class parallel_solver():
         prods = np.ravel(self.comm.allgather(np.prod(a.ravel())))
         return np.prod(prods)
     def par_sum(self,a):
+        ##### naive sum, the worst #####
+        #return self.comm.allreduce(np.sum(a),op=MPI.SUM)
+        
+        #### slow but accurate
+        #arrays = self.comm.allgather(a.ravel())
+        #old_sum = fsum(np.concatenate(arrays))
+        #return old_sum
+        
         #### somewhat fast, quite accurate ####
-        A=np.ravel(self.comm.allgather(fsum(a.ravel())))
-        return fsum(A)
+        #A=self.comm.allgather(fsum(a.ravel()))
+        #print(f'accurate result: {old_sum}, new result: {fsum(A)}')
+        #return fsum(A)
+       
+        ##### kahan sum, tracking all corrections #####
+        ''' This method should give very stable and accurate results '''
+        local_sum = np.array(stable_sum(a.ravel()))
+        all_sums = self.comm.allgather(local_sum)
+        global_sum = ft.reduce(stable_sum_step,all_sums)
+
+        return Decimal(f'{global_sum[0]}') + Decimal(f'{global_sum[1]}')
+
     def par_mean(self,x):
         rank = len(x.shape) - self.GD.ndim
-        x_mean = np.zeros(x.shape[self.GD.ndim:])
         size = np.prod(self.GD.ns)
-        for i,index in enumerate(np.ndindex(tuple([self.GD.ndim]*rank))):
-            x_mean[index] = self.par_sum(x[self.ind+index])/size
-
+        if rank==0:
+            x_mean = float(self.par_sum(x)/size)
+        else:
+            x_mean = np.zeros(x.shape[self.GD.ndim:])
+            for i,index in enumerate(np.ndindex(tuple([self.GD.ndim]*rank))):
+                x_mean[index] = float(self.par_sum(x[(np.s_[...],)+index])/size)
         return x_mean
 
     def update_boundary(self,dat,*argv):

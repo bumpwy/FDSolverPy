@@ -101,6 +101,7 @@ class diff_solver(parallel_solver):
         hh[:] = g0
         Fe_old = 0
         DF = np.Inf
+        Fs = [Fe0]
         ############### The Big Loop ###############
         t1 = datetime.now()
         self.parprint('Big Loop Begins...')
@@ -123,8 +124,9 @@ class diff_solver(parallel_solver):
             Fe0,Err = self.cg_integrate(self.c,hh,g0,g1,ls_args)
 
             # - record results
+            Fs.append(Fe0)
             if Fe_old==0: DF=0
-            else:DF = np.absolute((Fe0-Fe_old)/Fe_old)
+            else:DF = np.absolute(float((Fe0-Fe_old)/Fe_old))
             counter += 1
             
             # - output data
@@ -138,6 +140,7 @@ class diff_solver(parallel_solver):
         # final output
         self.parprint('-'*70)
         self.dump_macro_vars(outdir,\
+                             Fs=[str(Decimal(F)*Decimal(self.d_fac)) for F in Fs],\
                              etol_target=etol,etol_current=DF,\
                              ftol_target=ftol,ftol_current=Err,\
                              Nstep=Nstep,counter=counter)
@@ -170,13 +173,12 @@ class diff_solver(parallel_solver):
         denom = (g0**2)[self.ind]
         alpha1=self.par_sum(nom)
         alpha2=self.par_sum(denom)
-        if alpha2==0: return 0
-        return max(alpha1/alpha2, 0)
+        if alpha2<1e-6: return 0
+        return max(float(alpha1/alpha2), 0)
 
     def bracket(self,ta,tb,x,d):
         gold,glim,eps = (1+np.sqrt(5))/2, 100, 1e-20
         Fa,Fb = self.F(x-ta*d), self.F(x-tb*d)
-        d_max = np.absolute(d).max()
         
         # what to do if not downhill? (tb too big)
         if Fb > Fa:
@@ -189,7 +191,7 @@ class diff_solver(parallel_solver):
 
         # iteratively determine tc
         while Fb > Fc:
-            r, q = (tb-ta)*(Fb-Fc), (tb-tc)*(Fb-Fa)
+            r, q = (tb-ta)*float(Fb-Fc), (tb-tc)*float(Fb-Fa)
             sgn_qmr = np.sign(q-r) if np.sign(q-r) !=0 else 1
             tu = tb-((tb-tc)*q - (tb-ta)*r)\
                      /(2*sgn_qmr * np.absolute(max(np.absolute(q-r),eps)))
@@ -224,6 +226,7 @@ class diff_solver(parallel_solver):
 
         # bracketing
         ts,Fs = self.bracket(0,t0,x,d)
+        #self.parprint(ts,Fs)
         
         # initialize points
         a, b, c = ts
@@ -241,9 +244,10 @@ class diff_solver(parallel_solver):
             tol2 = 2*tol1
             if np.absolute(o-m) <= (tol2-0.5*(b-a)):
                 Fmin = Fo
+                #self.parprint(o)
                 return o
             if (np.absolute(e) > tol1):
-                r, q = (o-w)*(Fo-Fv),(o-v)*(Fo-Fw)
+                r, q = (o-w)*float(Fo-Fv),(o-v)*float(Fo-Fw)
                 p = (o-v)*q - (o-w)*r
                 q = 2*(q-r)
                 if q>0:
@@ -316,9 +320,9 @@ class diff_solver(parallel_solver):
 
         ##### NumPy #####
         J = self.J_oe_expr(-gradCs)
-        e_density = 0.5*self.e_oe_expr(J,-gradCs)
+        e_density = 0.5*self.e_oe_expr(J,-gradCs)*self.GD.dv
          
-        return self.par_sum((e_density[self.ind]))*np.prod(self.GD.dxs)
+        return self.par_sum((e_density[self.ind]))
 
     def dF(self,c,dF_dc,mask=None):
         # calculate energy
@@ -328,7 +332,7 @@ class diff_solver(parallel_solver):
        
         ##### NumPy approach #####
         J = self.J_oe_expr(-gradCs)
-        e_density = 0.5*self.e_oe_expr(J,-gradCs)
+        e_density = 0.5*self.e_oe_expr(J,-gradCs)*self.GD.dv
        
         # calculate force
         dF_dc[:] = sum([self.SecondDiff(-J[...,i],i) for i in range(self.GD.ndim)])
@@ -338,9 +342,9 @@ class diff_solver(parallel_solver):
         self.update_boundary(dF_dc)
         
         # maximal force
-        e = np.sqrt(dF_dc**2).max()
+        e = np.sqrt(dF_dc[self.ind]**2).max()
          
-        return self.par_sum((e_density[self.ind]))*np.prod(self.GD.dxs),\
+        return self.par_sum((e_density[self.ind])),\
                self.comm.allreduce(sendobj=e,op=MPI.MAX)
     def fix_boundary(self,dF_dc):
         for i in range(self.GD.ndim):
@@ -356,13 +360,12 @@ class diff_solver(parallel_solver):
         q = -np.stack(np.gradient(self.c,*self.GD.dxs),axis=-1)
         if self.GD.ndim==1: q = np.expand_dims(q,axis=1)
         j = self.J_oe_expr(q)*self.d_fac
-        Q,J = self.par_mean(q), self.par_mean(j)
+        Q,J = (self.par_mean(q[self.ind])), self.par_mean(j[self.ind])
 
         # D_par and D_ser
-        D_par = self.par_mean(self.d*self.d_fac)
-        det_d = np.linalg.det(self.d*self.d_fac)
-        not_singular = self.par_prod(det_d)
-        if not_singular:
+        D_par = self.par_mean((self.d[self.ind]*self.d_fac))
+        s, logdet_d = np.linalg.slogdet(self.d[self.ind]*self.d_fac)
+        if 0 not in s: 
             d_inv = np.linalg.inv(self.d)
             D_ser = np.linalg.inv(self.par_mean(d_inv))*self.d_fac
         else:
@@ -431,12 +434,12 @@ class diff_solver_pbc(diff_solver):
         self.update_boundary(self.c)
         dq = -np.stack(np.gradient(self.c,*self.GD.dxs),axis=-1)
         j = self.J_oe_expr(dq+self.Q)*self.d_fac
-        J = self.par_mean(j)
+        J = (self.par_mean(j))
 
         # D_par and D_ser
-        D_par = self.par_mean(self.d)*self.d_fac
+        D_par = (self.par_mean(self.d))*self.d_fac
         d_inv = np.linalg.inv(self.d)
-        D_ser = np.linalg.inv(self.par_mean(d_inv))*self.d_fac
+        D_ser = np.linalg.inv((self.par_mean(d_inv)))*self.d_fac
 
         # storage
         if self.rank==0:
@@ -450,9 +453,10 @@ class diff_solver_pbc(diff_solver):
 def normalize_parameters(calc,nn_value=None):
     # normalize paramters before calculation
     # greatly enhances stability for small d's
-    Tr_d = np.diagonal(calc.d[calc.ind],axis1=-2,axis2=-1).mean(axis=-1)
-    if nn_value is None:
-        nn_value = calc.par_mean(Tr_d)
+    #Tr_d = np.diagonal(calc.d[calc.ind],axis1=-2,axis2=-1).mean(axis=-1)
+    Tr_d = np.diagonal(calc.d,axis1=-2,axis2=-1).mean(axis=-1)
+    if not nn_value:
+        nn_value = float(calc.par_mean(Tr_d[calc.ind]))
     calc.d/=nn_value
     calc.d_fac = nn_value
     _,F_max = calc.dF(calc.c,np.zeros_like(calc.c))
