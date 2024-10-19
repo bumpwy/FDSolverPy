@@ -68,7 +68,7 @@ Below we show an example on a 288x288 grid optimization. In the energy vs. itera
 2. The `np.sum` exhibits stable values and converges steadily at 1 cpu; however, with 2 or 4 cpus, the convergence stalls completely
 3. Our `stable` method exhibit extremely stable and steady convergence, and gives identical results across 1, 2, and 4 cpus. In this case, they are at least identical up to 40 digits (a double (64-bit) is accurate up to 15 digits)
 
-We note that while the differences in energies are rather small (~1e-6) in a 288x288 grid calculation, numerical stability can be critical in 1) highly-precise physics modeling or 2) larger systems with massive parallel calculations, e.g. 288x288x288 3D grid with >100 cpus.
+We note that while the differences in energies are rather small (~1e-6) in a 288x288 grid calculation, numerical stability can be critical in 1) highly-precise physics modeling or 2) larger systems with massive parallel calculations, e.g. 288x288x288 3D grid with >100 cpus, where numerical errors are magnified.
 
 ![stability_parallelization](https://github.com/user-attachments/assets/653be14d-45e0-4a05-8756-501dac7e343f)
 
