@@ -65,6 +65,8 @@ class parallel_solver():
             nes_swap[0] = self.ghost
             self.send_buff += [[np.zeros(tuple(nes_swap),order='F') for i in range(2)]]
             self.recv_buff += [[np.zeros(tuple(nes_swap),order='F') for i in range(2)]]
+        ########## summation method ##########
+        self.par_sum = self.par_sum_fac('stable')
 
         ########## output status ##########
         self.parprint("Running on %i cores"%self.comm.size)
@@ -107,27 +109,41 @@ class parallel_solver():
     def par_prod(self,a):
         prods = np.ravel(self.comm.allgather(np.prod(a.ravel())))
         return np.prod(prods)
-    def par_sum(self,a):
-        ##### naive sum, the worst #####
-        #return self.comm.allreduce(np.sum(a),op=MPI.SUM)
-        
+    def par_sum_fac(self,method='stable'):
+
         #### slow but accurate
-        #arrays = self.comm.allgather(a.ravel())
-        #old_sum = fsum(np.concatenate(arrays))
-        #return old_sum
+        if method=='fsum_full':
+            def par_sum(a):
+                arrays = self.comm.allgather(a.ravel())
+                return fsum(np.concatenate(arrays))
         
         #### somewhat fast, quite accurate ####
-        #A=self.comm.allgather(fsum(a.ravel()))
-        #print(f'accurate result: {old_sum}, new result: {fsum(A)}')
-        #return fsum(A)
+        elif method=='fsum_partial':
+            def par_sum(a):
+                A=self.comm.allgather(fsum(a.ravel()))
+                return fsum(A)
        
         ##### kahan sum, tracking all corrections #####
-        ''' This method should give very stable and accurate results '''
-        local_sum = np.array(stable_sum(a.ravel()))
-        all_sums = self.comm.allgather(local_sum)
-        global_sum = ft.reduce(stable_sum_step,all_sums)
+        # This method should give very stable and accurate results
+        elif method=='stable':
+            def par_sum(a):
+                local_sum = np.array(stable_sum(a.ravel()))
+                all_sums = self.comm.allgather(local_sum)
+                global_sum = ft.reduce(stable_sum_step,all_sums)
 
-        return Decimal(f'{global_sum[0]}') + Decimal(f'{global_sum[1]}')
+                return Decimal(global_sum[0]) + Decimal(global_sum[1])
+        ##### numpy sum, bad #####
+        elif method=='numpy':
+            def par_sum(a):
+                return self.comm.allreduce(np.sum(a.ravel()),op=MPI.SUM)
+        ##### python built-in sum, bad #####
+        elif method=='normal':
+            def par_sum(a):
+                return self.comm.allreduce(sum(a.ravel()),op=MPI.SUM)
+        else:
+            self.parprint('unknown summation method')
+
+        self.par_sum = par_sum
 
     def par_mean(self,x):
         rank = len(x.shape) - self.GD.ndim

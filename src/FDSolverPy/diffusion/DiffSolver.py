@@ -101,7 +101,7 @@ class diff_solver(parallel_solver):
         hh[:] = g0
         Fe_old = 0
         DF = np.Inf
-        Fs = [Fe0]
+        Fs = [] if restart else [Fe0]
         ############### The Big Loop ###############
         t1 = datetime.now()
         self.parprint('Big Loop Begins...')
@@ -126,7 +126,7 @@ class diff_solver(parallel_solver):
             # - record results
             Fs.append(Fe0)
             if Fe_old==0: DF=0
-            else:DF = np.absolute(float((Fe0-Fe_old)/Fe_old))
+            else:DF = abs((Fe0-Fe_old)/Fe_old)
             counter += 1
             
             # - output data
@@ -139,9 +139,10 @@ class diff_solver(parallel_solver):
                                   str(datetime.now()-t1).ljust(15)))
         # final output
         self.parprint('-'*70)
-        self.dump_macro_vars(outdir,\
+        self.dump_macro_vars(outdir,restart=restart,\
                              Fs=[str(Decimal(F)*Decimal(self.d_fac)) for F in Fs],\
-                             etol_target=etol,etol_current=DF,\
+                             #Fs = [str(F) for F in Fs],
+                             etol_target=etol,etol_current=str(DF),\
                              ftol_target=ftol,ftol_current=Err,\
                              Nstep=Nstep,counter=counter)
         self.dump(outdir,counter,clean_old)
@@ -353,7 +354,7 @@ class diff_solver(parallel_solver):
             df_dc[0,...],df_dc[-1,...] = 0, 0
 
     # storing macro variables
-    def dump_macro_vars(self,outdir,**kwargs):
+    def dump_macro_vars(self,outdir,restart,**kwargs):
 
         # macro Q and J
         self.update_boundary(self.c)
@@ -374,8 +375,23 @@ class diff_solver(parallel_solver):
         # storage
         if self.rank==0:
             fname = os.path.join(outdir,'macro_vars.json')
-            kwargs.update({'Q':Q.tolist(),'J':J.tolist(),'D_par':D_par.tolist(),'D_ser':D_ser.tolist()})
-            json.dump(kwargs,
+            if restart:
+                try:
+                    with open(fname,'rt') as f:
+                        data = json.load(f)
+                except FileNotFoundError:
+                    data = {}
+            else:
+                data = {}
+            # merge old and new data
+            for key in kwargs:
+                if key in data and type(data[key])==list:
+                    data[key] += kwargs[key]
+                else:
+                    data[key] = kwargs[key]
+
+            data.update({'Q':Q.tolist(),'J':J.tolist(),'D_par':D_par.tolist(),'D_ser':D_ser.tolist()})
+            json.dump(data,
                       open(fname,'w'),indent=4)
 
 ##### pbc diffsolver class #####
